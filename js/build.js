@@ -1,29 +1,23 @@
 $('[data-login-id]').each(function() {
-  var _this = this;
-  var TWO_FACTOR_ERROR_CODE = 428;
-  var ONE_TIME_2FA_OPTION = 'onetime';
-  var genericErrorMessage = '<p>Unfortunately you don\'t have access to the app.</p><p>Please contact the app Admin for more information.</p>';
-  var LABELS = {
-    loginDefault: 'Log in',
-    loginProcessing: 'Logging in...',
-    authDefault: 'Authenticate',
-    authProcessing: 'Authenticating...',
-    sendDefault: 'Send new code',
-    sendProcessing: 'Sending...'
-  };
+  var _this = this,
+    errorMessage = '<p>Unable to login. Try again later.</p>',
+    loginOptions,
+    LABELS = {
+      loginDefault: 'Log in',
+      loginProcessing: 'Logging in...',
+      authDefault: 'Authenticate',
+      authProcessing: 'Authenticating...',
+      sendDefault: 'Send new code',
+      sendProcessing: 'Sending...'
+    },
+    TWO_FACTOR_ERROR_CODE = 428,
+    ONE_TIME_2FA_OPTION = 'onetime';
+
   _this.$container = $(this);
   _this.id = _this.$container.attr('data-login-id');
   _this.data = Fliplet.Widget.getData(_this.id);
   _this.pvNameStorage = 'fliplet_login_component';
   _this.pvName = 'login_component_' + _this.id;
-  var dataStructure = {
-    auth_token: '',
-    id: '',
-    email: '',
-    userRoleId: '',
-    createdAt: null
-  }
-  var loginOptions;
 
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
@@ -86,8 +80,6 @@ $('[data-login-id]').each(function() {
           userRoleId: response.userRoleId,
           auth_token: response.auth_token,
           email: response.email
-        }).then(function() {
-          return validateAppAccess();
         });
       });
     }).then(function() {
@@ -110,7 +102,10 @@ $('[data-login-id]').each(function() {
         calculateElHeight($('.state.present'));
         return;
       }
-      _this.$container.find('.login-error-holder').html(genericErrorMessage);
+      if (err && err.responseJSON) {
+        errorMessage = err.responseJSON.message;
+      }
+      _this.$container.find('.login-error-holder').html(errorMessage);
       _this.$container.find('.login-error-holder').addClass('show');
       calculateElHeight($('.state.present'));
     });
@@ -167,8 +162,6 @@ $('[data-login-id]').each(function() {
           auth_token: userData.auth_token,
           userRoleId: userData.userRoleId,
           email: userData.email
-        }).then(function() {
-          return validateAppAccess();
         });
       });
     }).then(function() {
@@ -208,7 +201,7 @@ $('[data-login-id]').each(function() {
             Fliplet.Navigate.to(_this.data.action);
             return;
           }
-          
+
           validateWeb()
             .then(function() {
               if (Fliplet.Env.get('disableSecurity')) {
