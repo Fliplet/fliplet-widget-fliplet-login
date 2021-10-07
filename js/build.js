@@ -1,17 +1,24 @@
 Fliplet.Widget.instance('login', function(data) {
   var _this = this;
+
+  $(this).translate();
+
   var TWO_FACTOR_ERROR_CODE = 428;
   var ONE_TIME_2FA_OPTION = 'onetime';
   var genericErrorMessage = '<p>Unable to login. Try again later.</p>';
   var LABELS = {
-    loginDefault: 'Log in',
-    loginProcessing: 'Logging in...',
-    authDefault: 'Verify',
-    authProcessing: 'Verifying...',
-    sendDefault: 'Send new code',
-    sendProcessing: 'Sending...',
-    continuDefault :'Continue',
-    continueProcessing: 'Please wait...'
+    loginDefault: T('widgets.flipletLogin.login.actions.login'),
+    loginProcessing: T('widgets.flipletLogin.login.actions.loginProgress'),
+    authDefault: T('widgets.flipletLogin.verify.actions.verify'),
+    authProcessing: T('widgets.flipletLogin.verify.actions.verifyProgress'),
+    resetDefault: T('widgets.flipletLogin.reset.actions.reset'),
+    resetProcessing: T('widgets.flipletLogin.reset.actions.resetProgress'),
+    sendDefault: T('widgets.flipletLogin.twoFactor.actions.sendCode'),
+    sendProcessing: T('widgets.flipletLogin.twoFactor.actions.sendCodeProgress'),
+    continueDefault: T('widgets.flipletLogin.login.actions.continue'),
+    continueProcessing: T('widgets.flipletLogin.login.actions.continueProgress'),
+    updateDefault:  T('widgets.flipletLogin.update.actions.update'),
+    updateProcessing: T('widgets.flipletLogin.update.actions.updateProgress')
   };
   _this.$container = $(this);
   _this.data = data;
@@ -71,7 +78,7 @@ Fliplet.Widget.instance('login', function(data) {
     var userEmail = ($form.find('.login_email').val() || '').toLowerCase().trim();
 
     if (!userEmail) {
-      return Fliplet.UI.Toast('Please enter an email');
+      return Fliplet.UI.Toast(T('widgets.flipletLogin.infoToast.enterEmail'));
     }
 
     if (!$form.attr('data-auth-type')) {
@@ -87,7 +94,7 @@ Fliplet.Widget.instance('login', function(data) {
       }).then(function (credential) {
         credential = credential || {};
 
-        $form.find('.btn-continue').html(LABELS.continuDefault).removeClass('disabled');
+        $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
 
         if (_.isEmpty(credential.types)) {
           // Switch to password reset
@@ -128,7 +135,7 @@ Fliplet.Widget.instance('login', function(data) {
                   }
 
                   if (!user || !session || !session.user || session.user.type !== null) {
-                    return reject('You didn\'t finish the login process.');
+                    return reject(T('widgets.flipletLogin.errors.loginNotFinished'));
                   }
 
                   // Update stored email address based on retrieved session
@@ -162,9 +169,9 @@ Fliplet.Widget.instance('login', function(data) {
         $form.find('.login_password').focus().prop('required', true);
         calculateElHeight($('.state.present'));
       }).catch(function (error) {
-        $form.find('.btn-continue').html(LABELS.continuDefault).removeClass('disabled');
+        $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
         Fliplet.UI.Toast.error(error, {
-          message: 'There was an error logging in'
+          message: T('widgets.flipletLogin.errorToast.loginFailed')
         });
       });
       return;
@@ -188,7 +195,7 @@ Fliplet.Widget.instance('login', function(data) {
       var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
 
       if (!user) {
-        return Promise.reject('Login failed. Please try again later.');
+        return Promise.reject(T('widgets.flipletLogin.errors.loginFailed'));
       }
 
       Fliplet.Analytics.trackEvent({
@@ -310,7 +317,7 @@ Fliplet.Widget.instance('login', function(data) {
   $('.fliplet-new-password').on('submit', function(e) {
     e.preventDefault();
     $('.forgot-new-password-error').addClass('hidden');
-    $('.btn-reset-pass').html('Resetting...').addClass('disabled');
+    $('.btn-reset-pass').html(LABELS.resetProcessing).addClass('disabled');
 
     // Checks if passwords match
     var email = $('.login_email').val();
@@ -319,7 +326,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     if (password !== confirmation) {
       $('.forgot-new-password-error').removeClass('hidden');
-      $('.btn-reset-pass').html('Reset password').removeClass('disabled');
+      $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
       calculateElHeight($('.state.present'));
       return;
     }
@@ -334,13 +341,13 @@ Fliplet.Widget.instance('login', function(data) {
     }).then(function() {
       $('.state.present').removeClass('present').addClass('past');
       $('[data-state="reset-success"]').removeClass('future').addClass('present');
-      $('.btn-reset-pass').html('Reset password').removeClass('disabled');
+      $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
       calculateElHeight($('.state.present'));
     }).catch(function() {
       $('.state.present').removeClass('present').addClass('future');
       $('[data-state="forgot-code"]').removeClass('past').addClass('present');
       $('.forgot-verify-error').removeClass('hidden');
-      $('.btn-reset-pass').html('Reset password').removeClass('disabled');
+      $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
       calculateElHeight($('.state.present'));
     });
   });
@@ -348,7 +355,7 @@ Fliplet.Widget.instance('login', function(data) {
   $('.fliplet-force-update-password').on('submit', function(e) {
     e.preventDefault();
     $('.force-update-new-password-error').addClass('hidden');
-    $('.btn-force-update-pass').html('Updating...').addClass('disabled');
+    $('.btn-force-update-pass').html(LABELS.updateProcessing).addClass('disabled');
 
     // Checks if passwords match
     var password = $('.force-update-new-password').val();
@@ -356,7 +363,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     if (password !== confirmation) {
       $('.force-update-new-password-error').removeClass('hidden');
-      $('.btn-force-update-pass').html('Update password').removeClass('disabled');
+      $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
       calculateElHeight($('.state.present'));
       return;
     }
@@ -370,17 +377,17 @@ Fliplet.Widget.instance('login', function(data) {
       }
     }).then(function() {
       if (Fliplet.Env.get('disableSecurity')) {
-        $('.btn-force-update-pass').html('Update password').removeClass('disabled');
+        $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-        return Fliplet.UI.Toast('Password updated');
+        return Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.passwordUpdated'));
       }
 
-      Fliplet.UI.Toast('Password updated');
+      Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.passwordUpdated'));
 
       Fliplet.Navigate.to(_this.data.action);
     }).catch(function(err) {
       $('.force-update-new-password-error').html(err.responseJSON.message).removeClass('hidden');
-      $('.btn-force-update-pass').html('Update password').removeClass('disabled');
+      $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
       calculateElHeight($('.state.present'));
     });
   });
@@ -435,7 +442,7 @@ Fliplet.Widget.instance('login', function(data) {
       var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
 
       if (!user) {
-        return Promise.reject('Login failed. Please try again later.');
+        return Promise.reject(T('widgets.flipletLogin.errors.loginFailed'));
       }
 
       Fliplet.Analytics.trackEvent({
@@ -504,7 +511,7 @@ Fliplet.Widget.instance('login', function(data) {
   function onLogin() {
     if (Fliplet.Env.get('disableSecurity')) {
       console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-      return Fliplet.UI.Toast('Login successful');
+      return Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.login'));
     }
 
     Fliplet.Navigate.to(_this.data.action);
@@ -557,7 +564,7 @@ Fliplet.Widget.instance('login', function(data) {
         }
 
         if (!session || !session.user || session.user.type !== null) {
-          return Promise.reject('Login session not found');
+          return Promise.reject(T('widgets.flipletLogin.errors.sessionNotFound'));
         }
 
         // Update stored email address based on retrieved session
@@ -593,11 +600,11 @@ Fliplet.Widget.instance('login', function(data) {
       })
       .then(function() {
         if (Fliplet.Env.get('disableSecurity')) {
-          return Promise.reject('Login verified. Redirection is disabled when security isn\'t enabled.');
+          return Promise.reject(T('widgets.flipletLogin.warning.noRedirectWithoutSecurity'));
         }
 
         if (Fliplet.Env.get('interact')) {
-          return Promise.reject('Login verified. Redirection is disabled when editing screens.');
+          return Promise.reject(T('widgets.flipletLogin.warning.noRedirectWhenEditing'));
         }
 
         var navigate = Fliplet.Navigate.to(_this.data.action);
