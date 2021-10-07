@@ -65,7 +65,7 @@
         "codeLabel": "Verification code",
         "codePlaceholder": "Enter code",
         "codeInvalid": "Please enter a valid code.",
-        "unableResend": "Unable to resend your code, try again later.",
+        "resendFailed": "Unable to resend your code, try again later.",
         "success": "Verification code sent.",
         "actions": {
           "verify": "Verify",
@@ -86,12 +86,12 @@
         }
       },
       "errors": {
-        "unknown": "Something went wrong. Please try again.",
+        "verificationFailed": "Something went wrong. Please try again.",
         "loginNotFinished": "You didn't finish the login process.",
         "loginFailed": "Login failed. Please try again later.",
         "sessionNotFound": "Login session not found"
       },
-      "warning": {
+      "warnings": {
         "noRedirectWithoutSecurity": "Login verified. Redirection is disabled when security isn't enabled.",
         "noRedirectWhenEditing": "Login verified. Redirection is disabled when editing screens."
       },

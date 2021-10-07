@@ -600,11 +600,11 @@ Fliplet.Widget.instance('login', function(data) {
       })
       .then(function() {
         if (Fliplet.Env.get('disableSecurity')) {
-          return Promise.reject(T('widgets.flipletLogin.warning.noRedirectWithoutSecurity'));
+          return Promise.reject(T('widgets.flipletLogin.warnings.noRedirectWithoutSecurity'));
         }
 
         if (Fliplet.Env.get('interact')) {
-          return Promise.reject(T('widgets.flipletLogin.warning.noRedirectWhenEditing'));
+          return Promise.reject(T('widgets.flipletLogin.warnings.noRedirectWhenEditing'));
         }
 
         var navigate = Fliplet.Navigate.to(_this.data.action);

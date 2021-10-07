@@ -53,7 +53,7 @@
         <div class="form-group clearfix ">
           <input type="tel" class="form-control forgot-verification-code" name="forgot-verification-code" data-translate="[placeholder]widgets.flipletLogin.verify.codePlaceholder" placeholder="Enter code" required>
         </div>
-        <p class="forgot-verify-error text-danger text-center hidden" data-translate="widgets.flipletLogin.errors.unknown">Something went wrong. Please try again.</p>
+        <p class="forgot-verify-error text-danger text-center hidden" data-translate="widgets.flipletLogin.errors.verificationFailed">Something went wrong. Please try again.</p>
         <div class="login-button-holder">
           <button type="submit" class="btn btn-primary btn-verify-code" data-translate="widgets.flipletLogin.verify.actions.verify">Verify</button>
           <button type="button" class="btn btn-link btn-forgot-cancel" data-translate="widgets.flipletLogin.verify.actions.cancel">Cancel</button>
@@ -78,10 +78,10 @@
       </form>
     </div>
     <div class="state future" data-state="reset-success">
-      <h3 class="aligncenter" data-translate="widgets.flipletLogin.reset.success.success.title">Password successfully reset</h3>
-      <p data-translate="widgets.flipletLogin.reset.success.success.instruction">Your password was successfully reset. You can now log in using your new password.</p>
+      <h3 class="aligncenter" data-translate="widgets.flipletLogin.reset.success.title">Password successfully reset</h3>
+      <p data-translate="widgets.flipletLogin.reset.success.instruction">Your password was successfully reset. You can now log in using your new password.</p>
       <div class="login-button-holder">
-        <button type="button" class="btn btn-primary btn-reset-success" data-translate="widgets.flipletLogin.reset.success.success.actions.login">Log in</button>
+        <button type="button" class="btn btn-primary btn-reset-success" data-translate="widgets.flipletLogin.reset.success.actions.login">Log in</button>
       </div>
     </div>
     <div class="state future" data-state="two-factor-code">
@@ -96,7 +96,7 @@
           </div>
         </div>
         <p class="help-two-factor two-factor-not-valid text-danger text-center hidden" data-translate="widgets.flipletLogin.twoFactor.codeInvalid">Please enter a valid code.</p>
-        <p class="help-two-factor two-factor-unable-to-resend text-danger text-center hidden" data-translate="widgets.flipletLogin.twoFactor.unableResend">Unable to resend your code, try again later.</p>
+        <p class="help-two-factor two-factor-unable-to-resend text-danger text-center hidden" data-translate="widgets.flipletLogin.twoFactor.resendFailed">Unable to resend your code, try again later.</p>
         <p class="help-two-factor two-factor-sent text-success text-center hidden" data-translate="widgets.flipletLogin.twoFactor.success">Verification code sent.</p>
         <div class="login-button-holder">
           <button type="submit" class="btn btn-primary btn-fliplet-login two-factor-btn" data-translate="widgets.flipletLogin.twoFactor.actions.verify">Verify</button>
