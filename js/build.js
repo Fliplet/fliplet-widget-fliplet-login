@@ -7,18 +7,18 @@ Fliplet.Widget.instance('login', function(data) {
   var ONE_TIME_2FA_OPTION = 'onetime';
   var genericErrorMessage = '<p>Unable to login. Try again later.</p>';
   var LABELS = {
-    loginDefault: T('widgets.flipletLogin.login.actions.login'),
-    loginProcessing: T('widgets.flipletLogin.login.actions.loginProgress'),
-    authDefault: T('widgets.flipletLogin.verify.actions.verify'),
-    authProcessing: T('widgets.flipletLogin.verify.actions.verifyProgress'),
-    resetDefault: T('widgets.flipletLogin.reset.actions.reset'),
-    resetProcessing: T('widgets.flipletLogin.reset.actions.resetProgress'),
-    sendDefault: T('widgets.flipletLogin.twoFactor.actions.sendCode'),
-    sendProcessing: T('widgets.flipletLogin.twoFactor.actions.sendCodeProgress'),
-    continueDefault: T('widgets.flipletLogin.login.actions.continue'),
-    continueProcessing: T('widgets.flipletLogin.login.actions.continueProgress'),
-    updateDefault:  T('widgets.flipletLogin.update.actions.update'),
-    updateProcessing: T('widgets.flipletLogin.update.actions.updateProgress')
+    loginDefault: T('widgets.login.fliplet.login.actions.login'),
+    loginProcessing: T('widgets.login.fliplet.login.actions.loginProgress'),
+    authDefault: T('widgets.login.fliplet.verify.actions.verify'),
+    authProcessing: T('widgets.login.fliplet.verify.actions.verifyProgress'),
+    resetDefault: T('widgets.login.fliplet.reset.actions.reset'),
+    resetProcessing: T('widgets.login.fliplet.reset.actions.resetProgress'),
+    sendDefault: T('widgets.login.fliplet.twoFactor.actions.sendCode'),
+    sendProcessing: T('widgets.login.fliplet.twoFactor.actions.sendCodeProgress'),
+    continueDefault: T('widgets.login.fliplet.login.actions.continue'),
+    continueProcessing: T('widgets.login.fliplet.login.actions.continueProgress'),
+    updateDefault:  T('widgets.login.fliplet.update.actions.update'),
+    updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
   };
   _this.$container = $(this);
   _this.data = data;
@@ -78,7 +78,7 @@ Fliplet.Widget.instance('login', function(data) {
     var userEmail = ($form.find('.login_email').val() || '').toLowerCase().trim();
 
     if (!userEmail) {
-      return Fliplet.UI.Toast(T('widgets.flipletLogin.infoToast.enterEmail'));
+      return Fliplet.UI.Toast(T('widgets.login.fliplet.infoToast.enterEmail'));
     }
 
     if (!$form.attr('data-auth-type')) {
@@ -126,8 +126,8 @@ Fliplet.Widget.instance('login', function(data) {
               url: ssoLoginUrl,
               onclose: function() {
                 Fliplet.Session.get().then(function(session) {
-                  var passport = session && session.accounts && session.accounts.flipletLogin;
-                  var user = _.get(session, 'server.passports.flipletLogin', [])[0];
+                  var passport = session && session.accounts && session.accounts.login.fliplet;
+                  var user = _.get(session, 'server.passports.login.fliplet', [])[0];
 
                   if (passport) {
                     session.user = _.extend(session.user, passport[0]);
@@ -135,7 +135,7 @@ Fliplet.Widget.instance('login', function(data) {
                   }
 
                   if (!user || !session || !session.user || session.user.type !== null) {
-                    return reject(T('widgets.flipletLogin.errors.loginNotFinished'));
+                    return reject(T('widgets.login.fliplet.errors.loginNotFinished'));
                   }
 
                   // Update stored email address based on retrieved session
@@ -171,7 +171,7 @@ Fliplet.Widget.instance('login', function(data) {
       }).catch(function (error) {
         $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
         Fliplet.UI.Toast.error(error, {
-          message: T('widgets.flipletLogin.errorToast.loginFailed')
+          message: T('widgets.login.fliplet.errorToast.loginFailed')
         });
       });
       return;
@@ -192,10 +192,10 @@ Fliplet.Widget.instance('login', function(data) {
     };
 
     login(loginOptions).then(function(response) {
-      var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+      var user = _.get(response, 'session.server.passports.login.fliplet', [])[0];
 
       if (!user) {
-        return Promise.reject(T('widgets.flipletLogin.errors.loginFailed'));
+        return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
       }
 
       Fliplet.Analytics.trackEvent({
@@ -379,10 +379,10 @@ Fliplet.Widget.instance('login', function(data) {
       if (Fliplet.Env.get('disableSecurity')) {
         $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-        return Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.passwordUpdated'));
+        return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.passwordUpdated'));
       }
 
-      Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.passwordUpdated'));
+      Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.passwordUpdated'));
 
       Fliplet.Navigate.to(_this.data.action);
     }).catch(function(err) {
@@ -439,10 +439,10 @@ Fliplet.Widget.instance('login', function(data) {
     $('.help-two-factor').addClass('hidden');
     loginOptions.twofactor = twoFactorCode;
     login(loginOptions).then(function(response) {
-      var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+      var user = _.get(response, 'session.server.passports.login.fliplet', [])[0];
 
       if (!user) {
-        return Promise.reject(T('widgets.flipletLogin.errors.loginFailed'));
+        return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
       }
 
       Fliplet.Analytics.trackEvent({
@@ -511,7 +511,7 @@ Fliplet.Widget.instance('login', function(data) {
   function onLogin() {
     if (Fliplet.Env.get('disableSecurity')) {
       console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-      return Fliplet.UI.Toast(T('widgets.flipletLogin.successToast.login'));
+      return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.login'));
     }
 
     Fliplet.Navigate.to(_this.data.action);
@@ -556,7 +556,7 @@ Fliplet.Widget.instance('login', function(data) {
   function init() {
     Fliplet.User.getCachedSession()
       .then(function(session) {
-        var passport = session && session.accounts && session.accounts.flipletLogin;
+        var passport = session && session.accounts && session.accounts.login.fliplet;
 
         if (passport) {
           session.user = _.extend(session.user, passport[0]);
@@ -564,7 +564,7 @@ Fliplet.Widget.instance('login', function(data) {
         }
 
         if (!session || !session.user || session.user.type !== null) {
-          return Promise.reject(T('widgets.flipletLogin.errors.sessionNotFound'));
+          return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
         }
 
         // Update stored email address based on retrieved session
@@ -600,11 +600,11 @@ Fliplet.Widget.instance('login', function(data) {
       })
       .then(function() {
         if (Fliplet.Env.get('disableSecurity')) {
-          return Promise.reject(T('widgets.flipletLogin.warnings.noRedirectWithoutSecurity'));
+          return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWithoutSecurity'));
         }
 
         if (Fliplet.Env.get('interact')) {
-          return Promise.reject(T('widgets.flipletLogin.warnings.noRedirectWhenEditing'));
+          return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
         }
 
         var navigate = Fliplet.Navigate.to(_this.data.action);
