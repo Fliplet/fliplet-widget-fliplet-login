@@ -105,7 +105,7 @@ Fliplet.Widget.instance('login', function(data) {
 
         if (ssoCredential) {
           // Redirect user to SSO login URL
-          var ssoLoginUrl = (Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/login/' + ssoCredential.type + '?token=' + ssoCredential.token;
+          var ssoLoginUrl = (credential.host || Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/login/' + ssoCredential.type + '?token=' + ssoCredential.token;
           var defaultShare = Fliplet.Navigate.defaults.disableShare;
 
           Fliplet.Navigate.defaults.disableShare = true;
