@@ -141,6 +141,11 @@ Fliplet.Widget.instance('login', function(data) {
                     email: session.user.email,
                     legacy: session.legacy
                   }).then(function() {
+                    return Fliplet.Hooks.run('login', {
+                      passport: 'fliplet',
+                      userProfile: user
+                    });
+                  }).then(function() {
                     return validateWeb();
                   }).then(function(response) {
                     if (userMustSetupAccount(response)) {
@@ -205,6 +210,11 @@ Fliplet.Widget.instance('login', function(data) {
         authToken: user.auth_token,
         email: user.email,
         legacy: response.legacy
+      }).then(function() {
+        return Fliplet.Hooks.run('login', {
+          passport: 'fliplet',
+          userProfile: user
+        });
       }).then(function() {
         if (userMustSetupAccount(response)) {
           return goToAccountSetup();
@@ -468,6 +478,11 @@ Fliplet.Widget.instance('login', function(data) {
         authToken: user.auth_token,
         email: user.email,
         legacy: response.legacy
+      }).then(function() {
+        return Fliplet.Hooks.run('login', {
+          passport: 'fliplet',
+          userProfile: user
+        });
       }).then(function() {
         if (userMustSetupAccount(response)) {
           return goToAccountSetup();
