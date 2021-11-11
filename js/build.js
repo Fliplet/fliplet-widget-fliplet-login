@@ -10,17 +10,13 @@ Fliplet.Widget.instance('login', function(data) {
     authProcessing: 'Verifying...',
     sendDefault: 'Send new code',
     sendProcessing: 'Sending...',
-    continuDefault :'Continue',
+    continueDefault: 'Continue',
     continueProcessing: 'Please wait...'
   };
+
   _this.$container = $(this);
   _this.data = data;
   _this.pvNameStorage = 'fliplet_login_component';
-  var studioUrls = {
-    'https://api.fliplet.test/': 'http://localhost:8080/',
-    'https://staging.api.fliplet.com/': 'https://staging2.studio.fliplet.com',
-    'https://api.fliplet.com/': 'https://studio.fliplet.com'
-  };
 
   // Do not track login related redirects
   if (typeof _this.data.action !== 'undefined') {
@@ -45,15 +41,19 @@ Fliplet.Widget.instance('login', function(data) {
     if (el.hasClass('start')) {
       $('.state[data-state=auth]').removeClass('start').addClass('present');
     }
+
     var elementHeight = el.outerHeight();
+
     el.parents('.content-wrapper').css('height', elementHeight);
     el.css('overflow', 'auto');
   }
 
   function createUserProfile(response) {
     response = response || {};
+
     if (!response.id || !response.region) {
       console.warn('Could not create user object for Fliplet.Profile');
+
       return;
     }
 
@@ -84,10 +84,10 @@ Fliplet.Widget.instance('login', function(data) {
           email: userEmail,
           target_session_auth_token: Fliplet.User.getAuthToken()
         }
-      }).then(function (credential) {
+      }).then(function(credential) {
         credential = credential || {};
 
-        $form.find('.btn-continue').html(LABELS.continuDefault).removeClass('disabled');
+        $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
 
         if (_.isEmpty(credential.types)) {
           // Switch to password reset
@@ -96,10 +96,11 @@ Fliplet.Widget.instance('login', function(data) {
           // Trigger password reset
           $('.forgot-email-address').val(userEmail);
           $('.fliplet-forgot-password').trigger('submit');
+
           return;
         }
 
-        var ssoCredential = _.find(credential.types, (credential) => {
+        var ssoCredential = _.find(credential.types, function(credential) {
           return credential.type.indexOf('sso-') === 0;
         });
 
@@ -110,7 +111,7 @@ Fliplet.Widget.instance('login', function(data) {
 
           Fliplet.Navigate.defaults.disableShare = true;
 
-          return new Promise(function (resolve, reject) {
+          return new Promise(function(resolve, reject) {
             Fliplet.Navigate.to({
               action: 'url',
               inAppBrowser: true,
@@ -139,9 +140,9 @@ Fliplet.Widget.instance('login', function(data) {
                     authToken: user.auth_token,
                     email: session.user.email,
                     legacy: session.legacy
-                  }).then(function () {
+                  }).then(function() {
                     return validateWeb();
-                  }).then(function (response) {
+                  }).then(function(response) {
                     if (userMustSetupAccount(response)) {
                       goToAccountSetup().then(resolve);
                     } else {
@@ -150,10 +151,10 @@ Fliplet.Widget.instance('login', function(data) {
                   });
                 });
               }
-            }).then(function () {
+            }).then(function() {
               Fliplet.Navigate.defaults.disableShare = defaultShare;
             });
-          }).then(function () {
+          }).then(function() {
             onLogin();
           });
         }
@@ -161,12 +162,13 @@ Fliplet.Widget.instance('login', function(data) {
         $form.attr('data-auth-type', 'password');
         $form.find('.login_password').focus().prop('required', true);
         calculateElHeight($('.state.present'));
-      }).catch(function (error) {
-        $form.find('.btn-continue').html(LABELS.continuDefault).removeClass('disabled');
+      }).catch(function(error) {
+        $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
         Fliplet.UI.Toast.error(error, {
           message: 'There was an error logging in'
         });
       });
+
       return;
     }
 
@@ -203,7 +205,7 @@ Fliplet.Widget.instance('login', function(data) {
         authToken: user.auth_token,
         email: user.email,
         legacy: response.legacy
-      }).then(function () {
+      }).then(function() {
         if (userMustSetupAccount(response)) {
           return goToAccountSetup();
         }
@@ -217,6 +219,7 @@ Fliplet.Widget.instance('login', function(data) {
       console.error(err);
       _this.$container.find('.btn-login').removeClass('disabled');
       _this.$container.find('.btn-login').html(LABELS.loginDefault);
+
       if (err && err.status === TWO_FACTOR_ERROR_CODE) {
         Fliplet.Analytics.trackEvent({
           category: 'login_fliplet',
@@ -226,9 +229,11 @@ Fliplet.Widget.instance('login', function(data) {
         if (err.responseJSON.condition !== ONE_TIME_2FA_OPTION) {
           $('.two-factor-resend').removeClass('hidden');
         }
+
         $('.state.present').removeClass('present').addClass('past');
         $('.state[data-state=two-factor-code]').removeClass('future').addClass('present');
         calculateElHeight($('.state.present'));
+
         return;
       }
 
@@ -238,6 +243,7 @@ Fliplet.Widget.instance('login', function(data) {
       });
 
       var errorMessage = (err && err.message || err.description) || genericErrorMessage;
+
       if (err && err.responseJSON) {
         errorMessage = err.responseJSON.message;
       }
@@ -254,7 +260,7 @@ Fliplet.Widget.instance('login', function(data) {
     calculateElHeight($('.state.present'));
   });
 
-  $('.btn-login-back').on('click', function () {
+  $('.btn-login-back').on('click', function() {
     $('.login-form').attr('data-auth-type', '')
       .find('.login_email, .login_password').val('').end()
       .find('.login_password').prop('required', false);
@@ -277,6 +283,7 @@ Fliplet.Widget.instance('login', function(data) {
   $('.fliplet-forgot-password').on('submit', function(e) {
     e.preventDefault();
     $('.forgot-verify-error').addClass('hidden');
+
     var email = $('.forgot-email-address').val();
 
     Fliplet.Analytics.trackEvent({
@@ -321,6 +328,7 @@ Fliplet.Widget.instance('login', function(data) {
       $('.forgot-new-password-error').removeClass('hidden');
       $('.btn-reset-pass').html('Reset password').removeClass('disabled');
       calculateElHeight($('.state.present'));
+
       return;
     }
 
@@ -358,6 +366,7 @@ Fliplet.Widget.instance('login', function(data) {
       $('.force-update-new-password-error').removeClass('hidden');
       $('.btn-force-update-pass').html('Update password').removeClass('disabled');
       calculateElHeight($('.state.present'));
+
       return;
     }
 
@@ -372,6 +381,7 @@ Fliplet.Widget.instance('login', function(data) {
       if (Fliplet.Env.get('disableSecurity')) {
         $('.btn-force-update-pass').html('Update password').removeClass('disabled');
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
+
         return Fliplet.UI.Toast('Password updated');
       }
 
@@ -399,19 +409,23 @@ Fliplet.Widget.instance('login', function(data) {
 
   $('.two-factor-resend').on('click', function() {
     var _that = $(this);
+
     $('.help-two-factor').addClass('hidden');
     _that.addClass('disabled');
     _that.html(LABELS.sendProcessing);
 
     calculateElHeight($('.state[data-state=two-factor-code]'));
+
     return login(loginOptions).catch(function(err) {
       if (err.status === TWO_FACTOR_ERROR_CODE) {
         _that.removeClass('disabled');
         _that.html(LABELS.sendDefault);
         $('.two-factor-sent').removeClass('hidden');
         calculateElHeight($('.state[data-state=two-factor-code]'));
+
         return;
       }
+
       _that.removeClass('disabled');
       _that.html(LABELS.sendDefault);
       $('.two-factor-unable-to-resend').removeClass('hidden');
@@ -421,14 +435,18 @@ Fliplet.Widget.instance('login', function(data) {
 
   $('.fliplet-two-factor').on('submit', function(e) {
     e.preventDefault();
+
     var twoFactorCode = $('.two-factor-code').val();
+
     _this.$container.find('.two-factor-btn').addClass('disabled').html(LABELS.authProcessing);
 
     if (twoFactorCode === '') {
       $('.two-factor-not-valid').removeClass('hidden');
       calculateElHeight($('.state[data-state=two-factor-code]'));
+
       return;
     }
+
     $('.help-two-factor').addClass('hidden');
     loginOptions.twofactor = twoFactorCode;
     login(loginOptions).then(function(response) {
@@ -450,7 +468,7 @@ Fliplet.Widget.instance('login', function(data) {
         authToken: user.auth_token,
         email: user.email,
         legacy: response.legacy
-      }).then(function () {
+      }).then(function() {
         if (userMustSetupAccount(response)) {
           return goToAccountSetup();
         }
@@ -473,6 +491,7 @@ Fliplet.Widget.instance('login', function(data) {
   function showStart() {
     setTimeout(function() {
       var $loginHolder = _this.$container.find('.login-loader-holder');
+
       $loginHolder.fadeOut(100, function() {
         _this.$container.find('.content-wrapper').show();
         calculateElHeight($('.state.start'));
@@ -504,6 +523,7 @@ Fliplet.Widget.instance('login', function(data) {
   function onLogin() {
     if (Fliplet.Env.get('disableSecurity')) {
       console.log('Redirection to other screens is disabled when security isn\'t enabled.');
+
       return Fliplet.UI.Toast('Login successful');
     }
 
@@ -512,6 +532,7 @@ Fliplet.Widget.instance('login', function(data) {
 
   function userMustSetupAccount(data) {
     data = data || {};
+
     return data.mustLinkTwoFactor
       || data.mustUpdateProfile
       // || data.mustUpdateAgreements
@@ -519,9 +540,9 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   function goToAccountSetup() {
-    return new Promise(function (resolve, reject) {
+    return new Promise(function(resolve) {
       return Fliplet.App.Storage.get(_this.pvNameStorage)
-        .then(function (storage) {
+        .then(function(storage) {
           var defaultShare = Fliplet.Navigate.defaults.disableShare;
 
           Fliplet.Navigate.defaults.disableShare = true;
@@ -539,10 +560,10 @@ Fliplet.Widget.instance('login', function(data) {
                   }
                 });
             }
-          }).then(function (browser) {
+          }).then(function() {
             Fliplet.Navigate.defaults.disableShare = defaultShare;
           });
-        })
+        });
     });
   }
 
@@ -584,7 +605,7 @@ Fliplet.Widget.instance('login', function(data) {
               authToken: response.user.auth_token,
               email: response.user.email,
               legacy: response.user.legacy
-            }).then(function () {
+            }).then(function() {
               if (userMustSetupAccount(response)) {
                 return goToAccountSetup();
               }
@@ -601,9 +622,11 @@ Fliplet.Widget.instance('login', function(data) {
         }
 
         var navigate = Fliplet.Navigate.to(_this.data.action);
+
         if (typeof navigate === 'object' && typeof navigate.then === 'function') {
           return navigate;
         }
+
         return Promise.resolve();
       })
       .catch(function(error) {
@@ -638,6 +661,7 @@ Fliplet.Widget.instance('login', function(data) {
       data.url = Fliplet.Env.get('apiUrl') + data.url;
       data.headers = data.headers || {};
       data.headers['Auth-token'] = data.token;
+
       return $.ajax(data);
     });
   }
@@ -646,8 +670,10 @@ Fliplet.Widget.instance('login', function(data) {
     setTimeout(function() {
       if (Fliplet.Navigator.isOnline()) {
         _this.$container.removeClass('login-offline');
+
         return;
       }
+
       scheduleCheck();
     }, 500);
   }
