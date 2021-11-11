@@ -593,7 +593,7 @@ Fliplet.Widget.instance('login', function(data) {
       })
       .then(function() {
         if (!Fliplet.Navigator.isOnline()) {
-          return Promise.resolve();
+          return;
         }
 
         return validateWeb()
@@ -627,7 +627,7 @@ Fliplet.Widget.instance('login', function(data) {
           return navigate;
         }
 
-        return Promise.resolve();
+        return;
       })
       .catch(function(error) {
         console.warn(error);
