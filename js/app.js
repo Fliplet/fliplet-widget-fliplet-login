@@ -219,7 +219,7 @@
     expire: 60 * 60 * 12 // Keep cache for half a day
   }, function onFetchData() {
     return Fliplet.Login.validateAccount().catch(function() {
-      // If it needs to be completed but not properly completed, clear cache
+      // Validation was not completed, clear cache to make sure the check continues
       Fliplet.Cache.remove(cacheKey);
     });
   });
@@ -235,11 +235,11 @@
     // Clear cache to make sure account validation occurs
     Fliplet.Cache.remove(cacheKey);
 
-    // If impersonated, save app storage flag so validation results can be ignored
+    // Set app storage flag so validation results can be ignored for impersonated users
     Fliplet.Login.setSkipSetupStorage(_.get(data, 'userProfile.impersonatedFrom'));
 
     Fliplet.Hooks.on('flipletAccountValidated', function() {
-      // When account is validated, set cache to avoid an immediate check
+      // When account is validated, set cache to avoid another immediate check on the next page
       Fliplet.Cache.set(cacheKey, true);
     });
   });
