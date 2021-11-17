@@ -62,27 +62,6 @@
     }
 
     /**
-     *
-     * @param {Object} data - Input data
-     * @param {String} data.url - Request URL
-     * @param {String} data.token - Request authentication token
-     * @returns {Promise} Promise is resolved when the request completes
-     */
-    function request(data) {
-      data = data || {};
-
-      // Validate token
-      return Fliplet.Navigator.onReady().then(function() {
-        data.url = Fliplet.Env.get('apiUrl') + data.url;
-        data.headers = data.headers || {};
-        // TODO: We might have moved on from setting auth token in the headers now. Should assess if we could use Fliplet.API.request()
-        data.headers['Auth-token'] = data.token;
-
-        return $.ajax(data);
-      });
-    }
-
-    /**
      * Get latest user data
      * @returns {Promise} Promise is resolved when user data is returned
      */
@@ -90,10 +69,11 @@
       return Fliplet.App.Storage.get(storageName).then(function(storage) {
         storage = storage || {};
 
-        return request({
-          method: 'GET',
+        return Fliplet.API.request({
           url: 'v1/user',
-          token: storage.auth_token
+          headers: {
+            'Auth-token': storage.auth_token
+          }
         });
       });
     }
