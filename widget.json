@@ -29,6 +29,9 @@
       "fliplet-security",
       "fliplet-session"
     ],
+    "appAssets": [
+      "js/app.js"
+    ],
     "assets": [
       "css/lib/email_validation_build.css",
       "js/build.js",
