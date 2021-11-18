@@ -48,22 +48,6 @@ Fliplet.Widget.instance('login', function(data) {
     el.css('overflow', 'auto');
   }
 
-  function createUserProfile(response) {
-    response = response || {};
-
-    if (!response.id || !response.region) {
-      console.warn('Could not create user object for Fliplet.Profile');
-
-      return;
-    }
-
-    return {
-      type: 'fliplet',
-      id: response.id,
-      region: response.region
-    };
-  }
-
   $('.login-form').on('submit', function(e) {
     e.preventDefault();
 
@@ -133,7 +117,7 @@ Fliplet.Widget.instance('login', function(data) {
                   }
 
                   // Update stored email address based on retrieved session
-                  updateUserData({
+                  Fliplet.Login.updateUserStorage({
                     id: session.user.id,
                     region: session.auth_token.substr(0, 2),
                     userRoleId: session.user.userRoleId,
@@ -141,13 +125,12 @@ Fliplet.Widget.instance('login', function(data) {
                     email: session.user.email,
                     legacy: session.legacy
                   }).then(function() {
-                    return validateWeb();
-                  }).then(function(response) {
-                    if (userMustSetupAccount(response)) {
-                      goToAccountSetup().then(resolve);
-                    } else {
-                      resolve();
-                    }
+                    return Fliplet.Hooks.run('login', {
+                      passport: 'fliplet',
+                      userProfile: user
+                    });
+                  }).then(function() {
+                    return Fliplet.Login.validateAccount().then(resolve).catch(reject);
                   });
                 });
               }
@@ -198,7 +181,7 @@ Fliplet.Widget.instance('login', function(data) {
         action: 'login_pass'
       });
 
-      return updateUserData({
+      return Fliplet.Login.updateUserStorage({
         id: response.id,
         region: user.region,
         userRoleId: user.userRoleId,
@@ -206,9 +189,12 @@ Fliplet.Widget.instance('login', function(data) {
         email: user.email,
         legacy: response.legacy
       }).then(function() {
-        if (userMustSetupAccount(response)) {
-          return goToAccountSetup();
-        }
+        return Fliplet.Hooks.run('login', {
+          passport: 'fliplet',
+          userProfile: user
+        });
+      }).then(function() {
+        return Fliplet.Login.validateAccount({ data: response });
       });
     }).then(function() {
       _this.$container.find('.btn-login').removeClass('disabled');
@@ -461,7 +447,7 @@ Fliplet.Widget.instance('login', function(data) {
         action: 'login_pass'
       });
 
-      return updateUserData({
+      return Fliplet.Login.updateUserStorage({
         id: response.id,
         region: user.region,
         userRoleId: user.userRoleId,
@@ -469,9 +455,12 @@ Fliplet.Widget.instance('login', function(data) {
         email: user.email,
         legacy: response.legacy
       }).then(function() {
-        if (userMustSetupAccount(response)) {
-          return goToAccountSetup();
-        }
+        return Fliplet.Hooks.run('login', {
+          passport: 'fliplet',
+          userProfile: user
+        });
+      }).then(function() {
+        return Fliplet.Login.validateAccount({ data: response });
       });
     }).then(function() {
       _this.$container.find('.two-factor-btn').removeClass('disabled').html(LABELS.authDefault);
@@ -499,27 +488,6 @@ Fliplet.Widget.instance('login', function(data) {
     }, 100);
   }
 
-  function updateUserData(data) {
-    var user = createUserProfile({
-      region: data.region,
-      id: data.id
-    });
-
-    var promises = [
-      Fliplet.App.Storage.set(_this.pvNameStorage, {
-        userRoleId: data.userRoleId,
-        auth_token: data.authToken,
-        email: data.email
-      }),
-      Fliplet.Profile.set({
-        email: data.email,
-        user: user
-      })
-    ];
-
-    return Promise.all(promises);
-  }
-
   function onLogin() {
     if (Fliplet.Env.get('disableSecurity')) {
       console.log('Redirection to other screens is disabled when security isn\'t enabled.');
@@ -528,43 +496,6 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     Fliplet.Navigate.to(_this.data.action);
-  }
-
-  function userMustSetupAccount(data) {
-    data = data || {};
-
-    return data.mustLinkTwoFactor
-      || data.mustUpdateProfile
-      // || data.mustUpdateAgreements
-      || _.get(data, 'policy.password.mustBeChanged');
-  }
-
-  function goToAccountSetup() {
-    return new Promise(function(resolve) {
-      return Fliplet.App.Storage.get(_this.pvNameStorage)
-        .then(function(storage) {
-          var defaultShare = Fliplet.Navigate.defaults.disableShare;
-
-          Fliplet.Navigate.defaults.disableShare = true;
-          Fliplet.Navigate.url({
-            url: (Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/redirect?auth_token=' + storage.auth_token + '&utm_source=com.fliplet.login',
-            inAppBrowser: true,
-            onclose: function() {
-              validateWeb()
-                .then(function(response) {
-                  // Update stored email address based on retrieved response
-                  if (userMustSetupAccount(response)) {
-                    goToAccountSetup().then(resolve);
-                  } else {
-                    resolve();
-                  }
-                });
-            }
-          }).then(function() {
-            Fliplet.Navigate.defaults.disableShare = defaultShare;
-          });
-        });
-    });
   }
 
   function init() {
@@ -582,7 +513,7 @@ Fliplet.Widget.instance('login', function(data) {
         }
 
         // Update stored email address based on retrieved session
-        return updateUserData({
+        return Fliplet.Login.updateUserStorage({
           id: session.user.id,
           region: session.auth_token.substr(0, 2),
           userRoleId: session.user.userRoleId,
@@ -596,21 +527,7 @@ Fliplet.Widget.instance('login', function(data) {
           return;
         }
 
-        return validateWeb()
-          .then(function(response) {
-            return updateUserData({
-              id: response.user.id,
-              region: response.region,
-              userRoleId: response.user.userRoleId,
-              authToken: response.user.auth_token,
-              email: response.user.email,
-              legacy: response.user.legacy
-            }).then(function() {
-              if (userMustSetupAccount(response)) {
-                return goToAccountSetup();
-              }
-            });
-          });
+        return Fliplet.Login.validateAccount({ updateUserStorage: true });
       })
       .then(function() {
         if (Fliplet.Env.get('disableSecurity')) {
@@ -626,24 +543,10 @@ Fliplet.Widget.instance('login', function(data) {
         if (typeof navigate === 'object' && typeof navigate.then === 'function') {
           return navigate;
         }
-
-        return;
       })
       .catch(function(error) {
         console.warn(error);
         showStart();
-      });
-  }
-
-  function validateWeb() {
-    // validate token
-    return Fliplet.App.Storage.get(_this.pvNameStorage)
-      .then(function(storage) {
-        return request({
-          method: 'GET',
-          url: 'v1/user',
-          token: storage.auth_token
-        });
       });
   }
 
@@ -652,17 +555,6 @@ Fliplet.Widget.instance('login', function(data) {
       method: 'POST',
       url: 'v1/auth/login',
       data: options
-    });
-  }
-
-  function request(data) {
-    // validate token
-    return Fliplet.Navigator.onReady().then(function() {
-      data.url = Fliplet.Env.get('apiUrl') + data.url;
-      data.headers = data.headers || {};
-      data.headers['Auth-token'] = data.token;
-
-      return $.ajax(data);
     });
   }
 
