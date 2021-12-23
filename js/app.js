@@ -198,10 +198,7 @@
     key: cacheKey,
     expire: 60 * 60 * 12 // Keep cache for half a day
   }, function onFetchData() {
-    return Fliplet.Login.validateAccount().catch(function() {
-      // Validation was not completed, clear cache to make sure the check continues
-      Fliplet.Cache.remove(cacheKey);
-    });
+    return Fliplet.Login.validateAccount();
   });
 
   Fliplet.Hooks.on('login', function(data) {
