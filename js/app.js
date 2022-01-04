@@ -2,6 +2,7 @@
   var Fliplet = window.Fliplet || {};
 
   Fliplet.Login = (function() {
+    var ORG_ADMIN_ROLE_ID = 1;
     var storageName = 'fliplet_login_component';
     var skipSetupStorageName = 'skipFlipletAccountSetup';
 
@@ -62,12 +63,14 @@
     }
 
     /**
-     * Get latest user data
+     * Get latest user data and attach organization data to it
      * @returns {Promise} Promise is resolved when user data is returned
      */
     function getUserData() {
-      return Fliplet.App.Storage.get(storageName).then(function(storage) {
-        storage = storage || {};
+      var storage;
+
+      return Fliplet.App.Storage.get(storageName).then(function(response) {
+        storage = response || {};
 
         return Fliplet.API.request({
           url: 'v1/user',
@@ -75,6 +78,26 @@
             'Auth-token': storage.auth_token
           }
         });
+      }).then(function(response) {
+        // Add organization data to response
+        return Fliplet.API.request({
+          url: 'v1/organizations',
+          headers: {
+            'Auth-token': storage.auth_token
+          }
+        }).then(function(data) {
+          _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
+
+          return response;
+        });
+      });
+    }
+
+    function isOrganizationAdmin(data) {
+      return !!_.find(data.userOrganizations, {
+        organizationUser: {
+          organizationRoleId: ORG_ADMIN_ROLE_ID
+        }
       });
     }
 
@@ -94,9 +117,13 @@
 
         data = data || {};
 
+        var agreements = data.mustReviewAgreements || [];
+        var hasAgreementsToReview = agreements.length
+          && (!_.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
+
         return data.mustLinkTwoFactor
           || data.mustUpdateProfile
-          || _.get(data, 'mustReviewAgreements', []).length
+          || hasAgreementsToReview
           || _.get(data, 'policy.password.mustBeChanged');
       });
     }
@@ -145,7 +172,7 @@
         // User data is not present, get the latest user data
         getData = getUserData().then(function(response) {
           if (!options.updateUserStorage) {
-            return Promise.resolve(response);
+            return response;
           }
 
           return updateUserStorage({
