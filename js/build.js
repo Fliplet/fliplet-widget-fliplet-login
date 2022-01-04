@@ -550,11 +550,34 @@ Fliplet.Widget.instance('login', function(data) {
       });
   }
 
+  /**
+   * Log the user in using fliplet passport and add user organization data
+   * @param {Object} options - Login options
+   * @returns {Promise<Object>} Login response
+   */
   function login(options) {
     return Fliplet.Session.run({
       method: 'POST',
       url: 'v1/auth/login',
       data: options
+    }).then(function(response) {
+      var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+
+      if (!user) {
+        return Promise.reject('Login failed. Please try again later.');
+      }
+
+      // Add organization data to response
+      return Fliplet.API.request({
+        url: 'v1/organizations',
+        headers: {
+          'Auth-token': user.auth_token
+        }
+      }).then(function(data) {
+        _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
+
+        return response;
+      });
     });
   }
 
