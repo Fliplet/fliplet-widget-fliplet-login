@@ -17,7 +17,7 @@ Fliplet.Widget.instance('login', function(data) {
     sendProcessing: T('widgets.login.fliplet.twoFactor.actions.sendCodeProgress'),
     continueDefault: T('widgets.login.fliplet.login.actions.continue'),
     continueProcessing: T('widgets.login.fliplet.login.actions.continueProgress'),
-    updateDefault:  T('widgets.login.fliplet.update.actions.update'),
+    updateDefault: T('widgets.login.fliplet.update.actions.update'),
     updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
   };
 
