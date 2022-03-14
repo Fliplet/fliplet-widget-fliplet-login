@@ -268,20 +268,16 @@ Fliplet.Widget.instance('login', function(data) {
 
   $('.login_password').on('input', function() {
     if (_this.data.showPassword && $('.login_password').val()) {
-      $('.fa-eye').removeClass('invisible');
+      $('.fa-eye').toggleClass('invisible', false);
     } else {
-      $('.fa-eye').addClass('invisible');
+      $('.fa-eye').toggleClass('invisible', true);
     }
   });
 
   $('.fa-eye').on('click', function() {
     var $passwordInput = $('.login_password');
 
-    if ($passwordInput.prop('type') === 'password') {
-      $passwordInput.attr('type', 'text');
-    } else {
-      $passwordInput.attr('type', 'password');
-    }
+    $passwordInput.prop('type') === 'password' ? $passwordInput.attr('type', 'text') : $passwordInput.attr('type', 'password');
   });
 
   $('.fliplet-forgot-password').on('submit', function(e) {

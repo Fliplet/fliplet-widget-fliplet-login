@@ -48,12 +48,7 @@ linkActionProvider.then(function(result) {
 });
 
 function save(notifyComplete) {
-  if ($('.password-show-checkbox').is(':checked') === true) {
-    canShowPassword = true;
-  } else {
-    canShowPassword = false;
-  }
-
+  canShowPassword = $('.password-show-checkbox').is(':checked');
   data.showPassword = $('.password-show-checkbox').is(':checked');
   data.heading = $('#login_heading').val();
   Fliplet.Widget.save(data).then(function() {
