@@ -266,6 +266,24 @@ Fliplet.Widget.instance('login', function(data) {
     calculateElHeight($('.state.present'));
   });
 
+  $('.login_password').on('input', function() {
+    if (_this.data.showPassword && $('.login_password').val()) {
+      $('.fa-eye').removeClass('invisible');
+    } else {
+      $('.fa-eye').addClass('invisible');
+    }
+  });
+
+  $('.fa-eye').on('click', function() {
+    var $passwordInput = $('.login_password');
+
+    if ($passwordInput.prop('type') === 'password') {
+      $passwordInput.attr('type', 'text');
+    } else {
+      $passwordInput.attr('type', 'password');
+    }
+  });
+
   $('.fliplet-forgot-password').on('submit', function(e) {
     e.preventDefault();
     $('.forgot-verify-error').addClass('hidden');

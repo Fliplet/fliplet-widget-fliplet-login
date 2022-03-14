@@ -2,6 +2,9 @@ var widgetId = Fliplet.Widget.getDefaultId();
 var data = Fliplet.Widget.getData(widgetId) || {};
 var appId = Fliplet.Env.get('appId');
 var headingValue = data.heading || 'Welcome to the login of this app';
+var canShowPassword = data.showPassword || false;
+
+$('.password-show-checkbox').prop('checked', canShowPassword);
 $('#login_heading').val(headingValue).trigger('change');
 
 var page = Fliplet.Widget.getPage();
@@ -45,6 +48,13 @@ linkActionProvider.then(function(result) {
 });
 
 function save(notifyComplete) {
+  if ($('.password-show-checkbox').is(':checked') === true) {
+    canShowPassword = true;
+  } else {
+    canShowPassword = false;
+  }
+
+  data.showPassword = $('.password-show-checkbox').is(':checked');
   data.heading = $('#login_heading').val();
   Fliplet.Widget.save(data).then(function() {
     if (notifyComplete) {
@@ -57,7 +67,7 @@ function save(notifyComplete) {
 }
 
 // Shows warning if security setting are not configured correctly
-function checkSecurityRules () {
+function checkSecurityRules() {
   Fliplet.API.request('v1/apps/' + appId).then(function(result) {
     if (!result || !result.app) {
       return;
@@ -73,7 +83,7 @@ function checkSecurityRules () {
     }
 
     $('#security-alert').toggleClass('hidden', isSecurityConfigured);
-  })
+  });
 }
 
 $('#login_heading').on('keyup change paste blur', $.debounce(function() {
