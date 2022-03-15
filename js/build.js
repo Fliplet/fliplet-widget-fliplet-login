@@ -27,6 +27,8 @@ Fliplet.Widget.instance('login', function(data) {
   var userEnteredCode;
   var userPassword;
 
+  var $passwordInput = $('.login_password');
+
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
     scheduleCheck();
@@ -267,17 +269,12 @@ Fliplet.Widget.instance('login', function(data) {
   });
 
   $('.login_password').on('input', function() {
-    if (_this.data.showPassword && $('.login_password').val()) {
-      $('.fa-eye').toggleClass('invisible', false);
-    } else {
-      $('.fa-eye').toggleClass('invisible', true);
-    }
+    $('.fa-eye').toggleClass('invisible', !_this.data.showPassword || !$passwordInput.val());
   });
 
   $('.fa-eye').on('click', function() {
-    var $passwordInput = $('.login_password');
-
-    $passwordInput.prop('type') === 'password' ? $passwordInput.attr('type', 'text') : $passwordInput.attr('type', 'password');
+    $passwordInput.attr('type', $passwordInput.prop('type') === 'password' ? 'text' : 'password');
+    $('.fa-eye').toggleClass('fa-eye-slash', $passwordInput.prop('type') === 'text');
   });
 
   $('.fliplet-forgot-password').on('submit', function(e) {
