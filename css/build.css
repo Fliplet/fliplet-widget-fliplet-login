@@ -23,6 +23,12 @@
   padding-right: 0;
 }
 
+.fl-new-password,
+.fl-confirm-password {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 input.form-control {
 	border: 1px solid #e5e5e5;
 	border-radius: 6px;
@@ -212,4 +218,8 @@ input.form-control:focus {
   top: 42px;
   right: 20px;
   display: inline-block;
+}
+
+.fliplet-new-password .fa-eye {
+  top: 15px;
 }

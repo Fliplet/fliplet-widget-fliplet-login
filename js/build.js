@@ -26,8 +26,9 @@ Fliplet.Widget.instance('login', function(data) {
   var loginOptions;
   var userEnteredCode;
   var userPassword;
-
-  var $passwordInput = $('.login_password');
+  var $passwordInputs = $('.login_password, .forgot-new-password, .forgot-confirm-password');
+  var $showPasswordButtons = $('.fa-eye');
+  var isPaswordShown = false;
 
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
@@ -268,13 +269,14 @@ Fliplet.Widget.instance('login', function(data) {
     calculateElHeight($('.state.present'));
   });
 
-  $('.login_password').on('input', function() {
-    $('.fa-eye').toggleClass('invisible', !_this.data.showPassword || !$passwordInput.val());
+  $passwordInputs.on('input', function(event) {
+    $($(event.target).next('.fa-eye')).toggleClass('invisible', !data.showPassword || !$(event.target).val());
   });
 
-  $('.fa-eye').on('click', function() {
-    $passwordInput.attr('type', $passwordInput.prop('type') === 'password' ? 'text' : 'password');
-    $('.fa-eye').toggleClass('fa-eye-slash', $passwordInput.prop('type') === 'text');
+  $showPasswordButtons.on('click', function() {
+    isPaswordShown = !isPaswordShown;
+    $passwordInputs.attr('type', isPaswordShown ? 'text' : 'password');
+    $showPasswordButtons.toggleClass('fa-eye-slash', isPaswordShown);
   });
 
   $('.fliplet-forgot-password').on('submit', function(e) {
