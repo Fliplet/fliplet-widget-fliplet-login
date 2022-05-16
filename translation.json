@@ -1,0 +1,113 @@
+{
+  "widgets": {
+    "login": {
+      "fliplet": {
+        "title": "Welcome to the login of this app",
+        "instruction": "Log in using your Fliplet access details.",
+        "offline": "Your device is offline",
+        "login": {
+          "emailLabel": "Email address",
+          "emailPlaceholder": "Enter your email",
+          "passwordLabel": "Password",
+          "passwordPlaceholder": "Enter your password",
+          "actions": {
+            "continue": "Continue",
+            "continueProgress": "Please wait...",
+            "login": "Log in",
+            "loginProgress": "Logging in...",
+            "back": "Back",
+            "forgotPassword": "Forgot password?"
+          },
+          "loginFailed ": "Unable to login. Try again later."
+        },
+        "restore": {
+          "title": "Forgot password",
+          "instruction": "Enter your email address below, and we will send you an email to reset your password.",
+          "emailLabel": "Email address",
+          "emailPlaceholder": "Email address",
+          "emailInvalid": "Please enter a valid email address.",
+          "actions": {
+            "reset": "Reset password",
+            "goBack": "Go back"
+          }
+        },
+        "verify": {
+          "title": "Verification",
+          "instruction": "A verification code was sent to <span class=\"forgot-verify-user-email\"></span>.",
+          "codePlaceholder": "Enter code",
+          "actions": {
+            "verify": "Verify",
+            "verifyProgress": "Verifying...",
+            "cancel": "Cancel"
+          }
+        },
+        "reset": {
+          "title": "New password",
+          "instruction": "Enter and confirm your new password.",
+          "newPasswordPlaceholder": "Enter new password",
+          "confirmPasswordPlaceholder": "Confirm new password",
+          "mismatch": "Passwords don't match.",
+          "actions": {
+            "reset": "Reset password",
+            "resetProgress": "Resetting...",
+            "cancel": "Cancel"
+          },
+          "success": {
+            "title": "Password successfully reset",
+            "instruction": "Your password was successfully reset. You can now log in using your new password.",
+            "actions": {
+              "login": "Log in"
+            }
+          }
+        },
+        "twoFactor": {
+          "title": "Two-Factor Authentication",
+          "instruction": "This extra step shows it's really you trying to log in",
+          "codeLabel": "Verification code",
+          "codePlaceholder": "Enter code",
+          "codeInvalid": "Please enter a valid code.",
+          "resendFailed": "Unable to resend your code, try again later.",
+          "success": "Verification code sent.",
+          "actions": {
+            "verify": "Verify",
+            "sendCode": "Send new code",
+            "sendCodeProgress": "Sending..."
+          }
+        },
+        "update": {
+          "title": "Your password needs to be updated",
+          "instruction": "Your organization has updated its password policy and you will need to update your password to keep meeting the security requirements.",
+          "newPasswordPlaceholder": "Enter new password",
+          "confirmPasswordPlaceholder": "Confirm new password",
+          "mismatch": "Passwords don't match.",
+          "actions": {
+            "update": "Update password",
+            "updateProgress": "Updating...",
+            "cancel": "Cancel"
+          }
+        },
+        "errors": {
+          "verificationFailed": "Something went wrong. Please try again.",
+          "loginNotFinished": "You didn't finish the login process.",
+          "loginFailed": "Login failed. Please try again later.",
+          "sessionNotFound": "Login session not found"
+        },
+        "warnings": {
+          "noRedirectWithoutSecurity": "Login verified. Redirection is disabled when security isn't enabled.",
+          "noRedirectWhenEditing": "Login verified. Redirection is disabled when editing screens."
+        },
+        "loading": "Loading...",
+        "infoToast": {
+          "enterEmail": "Please enter an email"
+        },
+        "errorToast": {
+          "loginFailed": "There was an error logging in"
+        },
+        "successToast": {
+          "login": "Login successful",
+          "passwordUpdated": "Password updated"
+        }
+      }
+    }
+  }
+}
