@@ -21,6 +21,14 @@ Fliplet.Widget.instance('login', function(data) {
     updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
   };
 
+  var rules = {
+    passwordMinLength: /.{8,}/,
+    isUppercase: /[A-Z]/,
+    isLowercase: /[a-z]/,
+    isNumber: /[0-9]/,
+    isSpecial: /[^A-Za-z0-9]/
+  };
+
   _this.$container = $(this);
   _this.data = data;
   _this.pvNameStorage = 'fliplet_login_component';
@@ -34,6 +42,15 @@ Fliplet.Widget.instance('login', function(data) {
   var userEnteredCode;
   var userPassword;
   var isValidPassword;
+  var $newPasswordInput = $('.forgot-new-password');
+  var $confirmPasswordInput = $('.forgot-confirm-password');
+  var $newPasswordChecker = $('.panel.password-checker');
+  var $confirmPasswordChecker = $('.password-confirmation');
+  var $passwordLengthCkecker = $('.password-lenght');
+  var $passwordUppercaseCkecker = $('.password-uppercase');
+  var $passwordLowercaseCkecker = $('.password-lowercase');
+  var $passwordNumberCkecker = $('.password-number');
+  var $passwordSpecialCkecker = $('.password-special');
 
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
@@ -54,6 +71,25 @@ Fliplet.Widget.instance('login', function(data) {
 
     el.parents('.content-wrapper').css('height', elementHeight);
     el.css('overflow', 'auto');
+  }
+
+  function validatePassword() {
+    var passwordValue = $newPasswordInput.val().trim();
+    var isValid = true;
+
+    $passwordLengthCkecker.attr('checked', rules.passwordMinLength.test(passwordValue));
+    $passwordUppercaseCkecker.attr('checked', rules.isUppercase.test(passwordValue));
+    $passwordLowercaseCkecker.attr('checked', rules.isLowercase.test(passwordValue));
+    $passwordNumberCkecker.attr('checked', rules.isNumber.test(passwordValue));
+    $passwordSpecialCkecker.attr('checked', rules.isSpecial.test(passwordValue));
+
+    _.forEach(rules, function(value) {
+      if (!value.test(passwordValue)) {
+        isValid = false;
+      }
+    });
+
+    isValidPassword = isValid;
   }
 
   $('.login-form').on('submit', function(e) {
@@ -274,65 +310,32 @@ Fliplet.Widget.instance('login', function(data) {
     calculateElHeight($('.state.present'));
   });
 
-  $('.forgot-new-password').on('focus', function() {
-    $('.panel.password-checker').removeClass('hidden');
+  $newPasswordInput.on('focus', function() {
+    $newPasswordChecker.removeClass('hidden');
     calculateElHeight($('.state.present'));
-  });
-
-  $('.forgot-confirm-password').on('focus', function() {
-    $('.password-confirmation').removeClass('hidden');
-    calculateElHeight($('.state.present'));
-  });
-
-  $('.forgot-new-password').on('blur', function() {
-    if (!$('.forgot-new-password').val()) {
-      $('.panel.password-checker').addClass('hidden');
+  }).on('blur', function() {
+    if (!$newPasswordInput.val()) {
+      $newPasswordChecker.addClass('hidden');
       calculateElHeight($('.state.present'));
     }
   });
 
-  $('.forgot-confirm-password').on('blur', function() {
-    if (!$('.forgot-confirm-password').val()) {
-      $('.password-confirmation').addClass('hidden');
+  $confirmPasswordInput.on('focus', function() {
+    $confirmPasswordChecker.removeClass('hidden');
+    calculateElHeight($('.state.present'));
+  }).on('blur', function() {
+    if (!$confirmPasswordInput.val()) {
+      $confirmPasswordChecker.addClass('hidden');
       calculateElHeight($('.state.present'));
     }
+  }).on('input', function() {
+    var password = $newPasswordInput.val();
+    var confirmation = $confirmPasswordInput.val();
+
+    $('.password-confirmation-check').attr('checked', confirmation === password && confirmation);
   });
 
-  $('.forgot-confirm-password').on('input', function() {
-    var password = $('.forgot-new-password').val();
-    var confirmation = $('.forgot-confirm-password').val();
-
-    $('.password-confirmation-check').attr('checked', confirmation === password && confirmation ? true : false);
-  });
-
-  function validatePassword() {
-    var passwordValue = $('.forgot-new-password').val().trim();
-    var isValid = true;
-
-    var rules = {
-      passwordMinLength: /.{8,}/,
-      isUppercase: /[A-Z]/,
-      isLowercase: /[a-z]/,
-      isNumber: /[0-9]/,
-      isSpecial: /[^A-Za-z0-9]/
-    };
-
-    $('.password-lenght').attr('checked', rules.passwordMinLength.test(passwordValue) ? true : false);
-    $('.password-uppercase').attr('checked', rules.isUppercase.test(passwordValue) ? true : false);
-    $('.password-lowercase').attr('checked', rules.isLowercase.test(passwordValue) ? true : false);
-    $('.password-number').attr('checked', rules.isNumber.test(passwordValue) ? true : false);
-    $('.password-special').attr('checked', rules.isSpecial.test(passwordValue) ? true : false);
-
-    _.forEach(rules, function(value) {
-      if (!value.test(passwordValue)) {
-        isValid = false;
-      }
-    });
-
-    isValidPassword = isValid;
-  }
-
-  $('.forgot-new-password').on('input', function() {
+  $newPasswordInput.on('input', function() {
     validatePassword();
   });
 
@@ -374,31 +377,31 @@ Fliplet.Widget.instance('login', function(data) {
     e.preventDefault();
 
     if (!isValidPassword) {
-      $('.panel.password-checker').addClass('panel-danger');
+      $newPasswordChecker.addClass('panel-danger');
 
       return;
     }
 
-    $('.panel.password-checker').removeClass('panel-danger');
+    $newPasswordChecker.removeClass('panel-danger');
 
     $('.forgot-new-password-error').addClass('hidden');
     $('.btn-reset-pass').html(LABELS.resetProcessing).addClass('disabled');
 
     // Checks if passwords match
     var email = $('.login_email').val();
-    var password = $('.forgot-new-password').val();
-    var confirmation = $('.forgot-confirm-password').val();
+    var password = $newPasswordInput.val();
+    var confirmation = $confirmPasswordInput.val();
 
     if (password !== confirmation) {
       $('.forgot-new-password-error').removeClass('hidden');
       $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
-      $('.password-confirmation').addClass('panel-danger');
+      $confirmPasswordChecker.addClass('panel-danger');
       calculateElHeight($('.state.present'));
 
       return;
     }
 
-    $('.password-confirmation').removeClass('panel-danger');
+    $confirmPasswordChecker.removeClass('panel-danger');
 
     return Fliplet.API.request({
       method: 'POST',
