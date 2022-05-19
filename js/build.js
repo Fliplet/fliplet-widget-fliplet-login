@@ -33,6 +33,7 @@ Fliplet.Widget.instance('login', function(data) {
   var loginOptions;
   var userEnteredCode;
   var userPassword;
+  var isValidPassword;
 
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
@@ -273,6 +274,68 @@ Fliplet.Widget.instance('login', function(data) {
     calculateElHeight($('.state.present'));
   });
 
+  $('.forgot-new-password').on('focus', function() {
+    $('.panel.password-checker').removeClass('hidden');
+    calculateElHeight($('.state.present'));
+  });
+
+  $('.forgot-confirm-password').on('focus', function() {
+    $('.password-confirmation').removeClass('hidden');
+    calculateElHeight($('.state.present'));
+  });
+
+  $('.forgot-new-password').on('blur', function() {
+    if (!$('.forgot-new-password').val()) {
+      $('.panel.password-checker').addClass('hidden');
+      calculateElHeight($('.state.present'));
+    }
+  });
+
+  $('.forgot-confirm-password').on('blur', function() {
+    if (!$('.forgot-confirm-password').val()) {
+      $('.password-confirmation').addClass('hidden');
+      calculateElHeight($('.state.present'));
+    }
+  });
+
+  $('.forgot-confirm-password').on('input', function() {
+    var password = $('.forgot-new-password').val();
+    var confirmation = $('.forgot-confirm-password').val();
+
+    $('.password-confirmation-check').attr('checked', confirmation === password && confirmation ? true : false);
+  });
+
+  function validatePassword() {
+    var passwordValue = $('.forgot-new-password').val().trim();
+    var isValid = true;
+
+    var rules = {
+      passwordMinLength: /.{8,}/,
+      isUppercase: /[A-Z]/,
+      isLowercase: /[a-z]/,
+      isNumber: /[0-9]/,
+      isSpecial: /[^A-Za-z0-9]/
+    };
+
+    $('.password-lenght').attr('checked', rules.passwordMinLength.test(passwordValue) ? true : false);
+    $('.password-uppercase').attr('checked', rules.isUppercase.test(passwordValue) ? true : false);
+    $('.password-lowercase').attr('checked', rules.isLowercase.test(passwordValue) ? true : false);
+    $('.password-number').attr('checked', rules.isNumber.test(passwordValue) ? true : false);
+    $('.password-special').attr('checked', rules.isSpecial.test(passwordValue) ? true : false);
+
+    _.forEach(rules, function(value) {
+      if (!value.test(passwordValue)) {
+        isValid = false;
+      }
+    });
+
+    isValidPassword = isValid;
+  }
+
+  $('.forgot-new-password').on('input', function() {
+    validatePassword();
+  });
+
   $('.fliplet-forgot-password').on('submit', function(e) {
     e.preventDefault();
     $('.forgot-verify-error').addClass('hidden');
@@ -309,6 +372,15 @@ Fliplet.Widget.instance('login', function(data) {
 
   $('.fliplet-new-password').on('submit', function(e) {
     e.preventDefault();
+
+    if (!isValidPassword) {
+      $('.panel.password-checker').addClass('panel-danger');
+
+      return;
+    }
+
+    $('.panel.password-checker').removeClass('panel-danger');
+
     $('.forgot-new-password-error').addClass('hidden');
     $('.btn-reset-pass').html(LABELS.resetProcessing).addClass('disabled');
 
@@ -320,10 +392,13 @@ Fliplet.Widget.instance('login', function(data) {
     if (password !== confirmation) {
       $('.forgot-new-password-error').removeClass('hidden');
       $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
+      $('.password-confirmation').addClass('panel-danger');
       calculateElHeight($('.state.present'));
 
       return;
     }
+
+    $('.password-confirmation').removeClass('panel-danger');
 
     return Fliplet.API.request({
       method: 'POST',
@@ -374,6 +449,7 @@ Fliplet.Widget.instance('login', function(data) {
       if (Fliplet.Env.get('disableSecurity')) {
         $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
+
         return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.passwordUpdated'));
       }
 

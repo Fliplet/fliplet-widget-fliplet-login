@@ -67,8 +67,62 @@
         <div class="form-group clearfix ">
           <input type="password" autocomplete="new-password" class="form-control forgot-new-password" name="forgot-new-password" data-translate="[placeholder]widgets.login.fliplet.reset.newPasswordPlaceholder" placeholder="Enter new password" required>
         </div>
+
+        <div class="panel password-checker hidden">
+          <div class="panel-heading">Password requirements</div>
+          <div class="panel-body">
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-lenght" readonly="readonly" tabindex="-1" />
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password must be at least 8 characters.</span>
+            </div>
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-uppercase" readonly="readonly" tabindex="-1"/>
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password must contain at least 1 uppercase character.</span>
+            </div>
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-lowercase" readonly="readonly" tabindex="-1" />
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password must contain at least 1 lowercase character.</span>
+            </div>
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-number" readonly="readonly" tabindex="-1" />
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password must contain at least 1 number.</span>
+            </div>
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-special" readonly="readonly" tabindex="-1" />
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password must contain at least 1 symbol.</span>
+            </div>
+          </div>
+        </div>
+
         <div class="form-group clearfix ">
           <input type="password" autocomplete="new-password" class="form-control forgot-confirm-password" name="forgot-confirm-password" data-translate="[placeholder]widgets.login.fliplet.reset.confirmPasswordPlaceholder" placeholder="Confirm new password" required>
+        </div>
+        <div class="panel password-checker password-confirmation hidden">
+          <div class="panel-heading">Password confirmation</div>
+          <div class="panel-body">
+            <div class="requirement">
+              <input type="checkbox" class="hidden password-confirmation-check" readonly="readonly" tabindex="-1" />
+              <label class="requirement-marker">
+                <i class="fa fa-check"></i>
+              </label>
+              <span>Password confirmation must match.</span>
+            </div>
+          </div>
         </div>
         <p class="forgot-new-password-error text-danger text-center hidden" data-translate="widgets.login.fliplet.reset.mismatch">Passwords don't match.</p>
         <div class="login-button-holder">
