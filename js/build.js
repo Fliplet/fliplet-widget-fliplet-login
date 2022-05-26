@@ -271,6 +271,12 @@ Fliplet.Widget.instance('login', function(data) {
 
   $passwordInput.on('input', function(event) {
     $(event.target).next('.fa-eye').toggleClass('hidden', !data.showPassword || !$(event.target).val());
+
+    if (!event.target.value) {
+      $passwordInput.attr('type', 'password');
+      $showPasswordButton.removeClass('fa-eye-slash');
+      $showPasswordButton.addClass('fa-eye');
+    }
   });
 
   $showPasswordButton.on('click', function() {
