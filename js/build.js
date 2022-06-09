@@ -2,7 +2,6 @@ Fliplet.Widget.instance('login', function(data) {
   var _this = this;
   var TWO_FACTOR_ERROR_CODE = 428;
   var ONE_TIME_2FA_OPTION = 'onetime';
-  var genericErrorMessage = '<p>Unable to login. Try again later.</p>';
 
   _this.$container = $(this);
   _this.data = data;
@@ -77,6 +76,8 @@ Fliplet.Widget.instance('login', function(data) {
       updateDefault: T('widgets.login.fliplet.update.actions.update'),
       updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
     };
+
+    var genericErrorMessage = '<p>' + T('widgets.login.fliplet.errors.unableLogin') + '</p>';
 
     $('.login-form').on('submit', function(e) {
       e.preventDefault();
