@@ -76,8 +76,9 @@ Fliplet.Widget.instance('login', function(data) {
       updateDefault: T('widgets.login.fliplet.update.actions.update'),
       updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
     };
-
     var genericErrorMessage = '<p>' + T('widgets.login.fliplet.errors.unableLogin') + '</p>';
+
+    _this.$container.translate();
 
     $('.login-form').on('submit', function(e) {
       e.preventDefault();
