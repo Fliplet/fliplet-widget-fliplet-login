@@ -90,7 +90,8 @@
           "verificationFailed": "Something went wrong. Please try again.",
           "loginNotFinished": "You didn't finish the login process.",
           "loginFailed": "Login failed. Please try again later.",
-          "sessionNotFound": "Login session not found"
+          "sessionNotFound": "Login session not found",
+          "unableLogin": "Unable to login. Try again later."
         },
         "warnings": {
           "noRedirectWithoutSecurity": "Login verified. Redirection is disabled when security isn't enabled.",
