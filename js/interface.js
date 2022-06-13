@@ -2,9 +2,8 @@ var widgetId = Fliplet.Widget.getDefaultId();
 var data = Fliplet.Widget.getData(widgetId) || {};
 var appId = Fliplet.Env.get('appId');
 var headingValue = data.heading || 'Welcome to the login of this app';
-var canShowPassword = data.showPassword || false;
 
-$('.password-show-checkbox').prop('checked', canShowPassword);
+$('.password-show-checkbox').prop('checked', data.showPassword || false);
 $('#login_heading').val(headingValue).trigger('change');
 
 var page = Fliplet.Widget.getPage();
@@ -48,8 +47,7 @@ linkActionProvider.then(function(result) {
 });
 
 function save(notifyComplete) {
-  canShowPassword = $('.password-show-checkbox').is(':checked');
-  data.showPassword = canShowPassword;
+  data.showPassword = $('.password-show-checkbox').is(':checked');
   data.heading = $('#login_heading').val();
   Fliplet.Widget.save(data).then(function() {
     if (notifyComplete) {

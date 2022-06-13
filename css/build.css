@@ -207,7 +207,7 @@ input.form-control:focus {
   width: 100%;
 }
 
-.fa-eye {
+[data-widget-package="com.fliplet.login"] .fa-eye {
   position: absolute;
   top: 42px;
   right: 20px;
