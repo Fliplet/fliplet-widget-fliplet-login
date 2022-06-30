@@ -85,8 +85,7 @@
 
 .state .btn {
   margin: 20px auto 0;
-  display: inline-block;
-  outline: none;
+  display: block;
 }
 
 .state .input-email {
