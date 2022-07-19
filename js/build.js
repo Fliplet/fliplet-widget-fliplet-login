@@ -136,8 +136,8 @@ Fliplet.Widget.instance('login', function(data) {
                 url: ssoLoginUrl,
                 onclose: function() {
                   Fliplet.Session.get().then(function(session) {
-                    var passport = session && session.accounts && session.accounts.login.fliplet;
-                    var user = _.get(session, 'server.passports.login.fliplet', [])[0];
+                    var passport = session && session.accounts && session.accounts.flipletLogin;
+                    var user = _.get(session, 'server.passports.flipletLogin', [])[0];
 
                     if (passport) {
                       session.user = _.extend(session.user, passport[0]);
@@ -202,7 +202,7 @@ Fliplet.Widget.instance('login', function(data) {
       };
 
       login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.login.fliplet', [])[0];
+        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
 
         if (!user) {
           return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
@@ -468,7 +468,7 @@ Fliplet.Widget.instance('login', function(data) {
       $('.help-two-factor').addClass('hidden');
       loginOptions.twofactor = twoFactorCode;
       login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.login.fliplet', [])[0];
+        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
 
         if (!user) {
           return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
