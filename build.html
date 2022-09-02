@@ -9,115 +9,333 @@
       {{else}}
       <h2 data-translate="widgets.login.fliplet.title">Welcome to the login of this app</h2>
       {{/if}}
-      <p data-translate="widgets.login.fliplet.instruction">Log in using your Fliplet access details.</p>
-      <div class="login-offline-notification" data-translate="widgets.login.fliplet.offline">Your device is offline</div>
+      <p data-translate="widgets.login.fliplet.instruction">
+        Log in using your Fliplet access details.
+      </p>
+      <div class="login-offline-notification" data-translate="widgets.login.fliplet.offline">
+        Your device is offline
+      </div>
       <form class="login-form" data-login-form-id="{{id}}" data-auth-type="">
         <div class="form-group">
           <label data-translate="widgets.login.fliplet.login.emailLabel">Email address</label>
-          <input type="email" class="form-control login_email" data-translate="[placeholder]widgets.login.fliplet.login.emailPlaceholder" placeholder="Enter your email" required>
+          <input
+            type="email"
+            class="form-control login_email"
+            data-translate="[placeholder]widgets.login.fliplet.login.emailPlaceholder"
+            placeholder="Enter your email"
+            required
+          />
         </div>
         <div class="form-group password">
           <label data-translate="widgets.login.fliplet.login.passwordLabel">Password</label>
-          <input type="password" autocomplete="new-password" class="form-control login_password" data-translate="[placeholder]widgets.login.fliplet.login.passwordPlaceholder" placeholder="Enter your password">
+          <input
+            type="password"
+            autocomplete="new-password"
+            class="form-control login_password"
+            data-translate="[placeholder]widgets.login.fliplet.login.passwordPlaceholder"
+            placeholder="Enter your password"
+          />
         </div>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-continue" data-translate="widgets.login.fliplet.login.actions.continue">Continue</button>
-          <button type="submit" class="btn btn-primary btn-fliplet-login btn-login" data-translate="widgets.login.fliplet.login.actions.login">Log in</button>
-          <button type="button" class="btn btn-default btn-login-back" data-translate="widgets.login.fliplet.login.actions.back">Back</button>
-          <button type="button" class="btn btn-link btn-forgot-pass" data-translate="widgets.login.fliplet.login.actions.forgotPassword">Forgot password?</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-continue"
+            data-translate="widgets.login.fliplet.login.actions.continue"
+          >
+            Continue
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-fliplet-login btn-login"
+            data-translate="widgets.login.fliplet.login.actions.login"
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            class="btn btn-default btn-login-back"
+            data-translate="widgets.login.fliplet.login.actions.back"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            class="btn btn-link btn-forgot-pass"
+            data-translate="widgets.login.fliplet.login.actions.forgotPassword"
+          >
+            Forgot password?
+          </button>
         </div>
         <div class="login-error-holder">
-          <p data-translate="widgets.login.fliplet.login.loginFailed">Unable to login. Try again later.</p>
+          <p data-translate="widgets.login.fliplet.errors.unableLogin">
+            Unable to login. Try again later.
+          </p>
         </div>
       </form>
     </div>
     <div class="state future" data-state="forgot-email">
-      <h3 class="aligncenter" data-translate="widgets.login.fliplet.restore.title">Forgot password</h3>
-      <p data-translate="widgets.login.fliplet.restore.instruction">Enter your email address below, and we will send you an email to reset your password.</p>
+      <h3 class="aligncenter" data-translate="widgets.login.fliplet.restore.title">
+        Forgot password
+      </h3>
+      <p data-translate="widgets.login.fliplet.restore.instruction">
+        Enter your email address below, and we will send you an email to reset your password.
+      </p>
       <form class="fliplet-forgot-password">
-        <div class="form-group clearfix ">
+        <div class="form-group clearfix">
           <label data-translate="widgets.login.fliplet.restore.emailLabel">Email address</label>
-          <input type="email" class="form-control forgot-email-address" name="forgot-email-address" data-translate="[placeholder]widgets.login.fliplet.restore.emailPlaceholder" placeholder="Email address" required>
+          <input
+            type="email"
+            class="form-control forgot-email-address"
+            name="forgot-email-address"
+            data-translate="[placeholder]widgets.login.fliplet.restore.emailPlaceholder"
+            placeholder="Email address"
+            required
+          />
         </div>
-        <p class="forgot-email-error text-danger text-center hidden" data-translate="widgets.login.fliplet.restore.emailInvalid">Please enter a valid email address.</p>
+        <p
+          class="forgot-email-error text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.restore.emailInvalid"
+        >
+          Please enter a valid email address.
+        </p>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-reset-pass" data-translate="widgets.login.fliplet.restore.actions.reset">Reset password</button>
-          <button type="button" class="btn btn-link btn-forgot-back" data-translate="widgets.login.fliplet.restore.actions.goBack">Go back</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-reset-pass"
+            data-translate="widgets.login.fliplet.restore.actions.reset"
+          >
+            Reset password
+          </button>
+          <button
+            type="button"
+            class="btn btn-link btn-forgot-back"
+            data-translate="widgets.login.fliplet.restore.actions.goBack"
+          >
+            Go back
+          </button>
         </div>
       </form>
     </div>
     <div class="state future" data-state="forgot-code">
       <h3 class="aligncenter" data-translate="widgets.login.fliplet.verify.title">Verification</h3>
-      <p data-translate="[html]widgets.login.fliplet.verify.instruction">A verification code was sent to <span class="forgot-verify-user-email"></span>.</p>
+      <p data-translate="[html]widgets.login.fliplet.verify.instruction">
+        A verification code was sent to <span class="forgot-verify-user-email"></span>.
+      </p>
       <form class="fliplet-verify-code">
-        <div class="form-group clearfix ">
-          <input type="tel" class="form-control forgot-verification-code" name="forgot-verification-code" data-translate="[placeholder]widgets.login.fliplet.verify.codePlaceholder" placeholder="Enter code" required>
+        <div class="form-group clearfix">
+          <input
+            type="tel"
+            class="form-control forgot-verification-code"
+            name="forgot-verification-code"
+            data-translate="[placeholder]widgets.login.fliplet.verify.codePlaceholder"
+            placeholder="Enter code"
+            required
+          />
         </div>
-        <p class="forgot-verify-error text-danger text-center hidden" data-translate="widgets.login.fliplet.errors.verificationFailed">Something went wrong. Please try again.</p>
+        <p
+          class="forgot-verify-error text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.errors.verificationFailed"
+        >
+          Something went wrong. Please try again.
+        </p>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-verify-code" data-translate="widgets.login.fliplet.verify.actions.verify">Verify</button>
-          <button type="button" class="btn btn-link btn-forgot-cancel" data-translate="widgets.login.fliplet.verify.actions.cancel">Cancel</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-verify-code"
+            data-translate="widgets.login.fliplet.verify.actions.verify"
+          >
+            Verify
+          </button>
+          <button
+            type="button"
+            class="btn btn-link btn-forgot-cancel"
+            data-translate="widgets.login.fliplet.verify.actions.cancel"
+          >
+            Cancel
+          </button>
         </div>
       </form>
     </div>
     <div class="state future" data-state="forgot-new-pass">
       <h3 class="aligncenter" data-translate="widgets.login.fliplet.reset.title">New password</h3>
-      <p data-translate="widgets.login.fliplet.reset.instruction">Enter and confirm your new password.</p>
+      <p data-translate="widgets.login.fliplet.reset.instruction">
+        Enter and confirm your new password.
+      </p>
       <form class="fliplet-new-password">
-        <div class="form-group clearfix ">
-          <input type="password" autocomplete="new-password" class="form-control forgot-new-password" name="forgot-new-password" data-translate="[placeholder]widgets.login.fliplet.reset.newPasswordPlaceholder" placeholder="Enter new password" required>
+        <div class="form-group clearfix">
+          <input
+            type="password"
+            autocomplete="new-password"
+            class="form-control forgot-new-password"
+            name="forgot-new-password"
+            data-translate="[placeholder]widgets.login.fliplet.reset.newPasswordPlaceholder"
+            placeholder="Enter new password"
+            required
+          />
         </div>
-        <div class="form-group clearfix ">
-          <input type="password" autocomplete="new-password" class="form-control forgot-confirm-password" name="forgot-confirm-password" data-translate="[placeholder]widgets.login.fliplet.reset.confirmPasswordPlaceholder" placeholder="Confirm new password" required>
+        <div class="form-group clearfix">
+          <input
+            type="password"
+            autocomplete="new-password"
+            class="form-control forgot-confirm-password"
+            name="forgot-confirm-password"
+            data-translate="[placeholder]widgets.login.fliplet.reset.confirmPasswordPlaceholder"
+            placeholder="Confirm new password"
+            required
+          />
         </div>
-        <p class="forgot-new-password-error text-danger text-center hidden" data-translate="widgets.login.fliplet.reset.mismatch">Passwords don't match.</p>
+        <p
+          class="forgot-new-password-error text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.reset.mismatch"
+        >
+          Passwords don't match.
+        </p>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-reset-pass" data-translate="widgets.login.fliplet.reset.actions.reset">Reset password</button>
-          <button type="button" class="btn btn-link btn-forgot-cancel" data-translate="widgets.login.fliplet.reset.actions.cancel">Cancel</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-reset-pass"
+            data-translate="widgets.login.fliplet.reset.actions.reset"
+          >
+            Reset password
+          </button>
+          <button
+            type="button"
+            class="btn btn-link btn-forgot-cancel"
+            data-translate="widgets.login.fliplet.reset.actions.cancel"
+          >
+            Cancel
+          </button>
         </div>
       </form>
     </div>
     <div class="state future" data-state="reset-success">
-      <h3 class="aligncenter" data-translate="widgets.login.fliplet.reset.success.title">Password successfully reset</h3>
-      <p data-translate="widgets.login.fliplet.reset.success.instruction">Your password was successfully reset. You can now log in using your new password.</p>
+      <h3 class="aligncenter" data-translate="widgets.login.fliplet.reset.success.title">
+        Password successfully reset
+      </h3>
+      <p data-translate="widgets.login.fliplet.reset.success.instruction">
+        Your password was successfully reset. You can now log in using your new password.
+      </p>
       <div class="login-button-holder">
-        <button type="button" class="btn btn-primary btn-reset-success" data-translate="widgets.login.fliplet.reset.success.actions.login">Log in</button>
+        <button
+          type="button"
+          class="btn btn-primary btn-reset-success"
+          data-translate="widgets.login.fliplet.reset.success.actions.login"
+        >
+          Log in
+        </button>
       </div>
     </div>
     <div class="state future" data-state="two-factor-code">
-      <h3 class="aligncenter" data-translate="widgets.login.fliplet.twoFactor.title">Two-Factor Authentication</h3>
-      <p data-translate="widgets.login.fliplet.twoFactor.instruction">This extra step shows it's really you trying to log in</p>
+      <h3 class="aligncenter" data-translate="widgets.login.fliplet.twoFactor.title">
+        Two-Factor Authentication
+      </h3>
+      <p data-translate="widgets.login.fliplet.twoFactor.instruction">
+        This extra step shows it's really you trying to log in
+      </p>
       <form class="fliplet-two-factor">
-        <div class="form-group clearfix ">
-          <label data-translate="widgets.login.fliplet.twoFactor.codeLabel">Verification code</label>
+        <div class="form-group clearfix">
+          <label data-translate="widgets.login.fliplet.twoFactor.codeLabel">
+            Verification code
+          </label>
           <div class="fl-two-auth">
             <span class="fa fa-chevron-left back"></span>
-            <input type="tel" class="form-control two-factor-code" name="two-factor" data-translate="[placeholder]widgets.login.fliplet.twoFactor.codePlaceholder" placeholder="Enter code" required>
+            <input
+              type="tel"
+              class="form-control two-factor-code"
+              name="two-factor"
+              data-translate="[placeholder]widgets.login.fliplet.twoFactor.codePlaceholder"
+              placeholder="Enter code"
+              required
+            />
           </div>
         </div>
-        <p class="help-two-factor two-factor-not-valid text-danger text-center hidden" data-translate="widgets.login.fliplet.twoFactor.codeInvalid">Please enter a valid code.</p>
-        <p class="help-two-factor two-factor-unable-to-resend text-danger text-center hidden" data-translate="widgets.login.fliplet.twoFactor.resendFailed">Unable to resend your code, try again later.</p>
-        <p class="help-two-factor two-factor-sent text-success text-center hidden" data-translate="widgets.login.fliplet.twoFactor.success">Verification code sent.</p>
+        <p
+          class="help-two-factor two-factor-not-valid text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.twoFactor.codeInvalid"
+        >
+          Please enter a valid code.
+        </p>
+        <p
+          class="help-two-factor two-factor-unable-to-resend text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.twoFactor.resendFailed"
+        >
+          Unable to resend your code, try again later.
+        </p>
+        <p
+          class="help-two-factor two-factor-sent text-success text-center hidden"
+          data-translate="widgets.login.fliplet.twoFactor.success"
+        >
+          Verification code sent.
+        </p>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-fliplet-login two-factor-btn" data-translate="widgets.login.fliplet.twoFactor.actions.verify">Verify</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-fliplet-login two-factor-btn"
+            data-translate="widgets.login.fliplet.twoFactor.actions.verify"
+          >
+            Verify
+          </button>
         </div>
       </form>
-      <div class="resend-code-area two-factor-resend btn btn-link hidden" data-translate="widgets.login.fliplet.twoFactor.actions.sendCode">Send new code</div>
+      <div
+        class="resend-code-area two-factor-resend btn btn-link hidden"
+        data-translate="widgets.login.fliplet.twoFactor.actions.sendCode"
+      >
+        Send new code
+      </div>
     </div>
     <div class="state future" data-state="force-update-pass">
-      <h3 class="aligncenter" data-translate="widgets.login.fliplet.update.title">Your password needs to be updated</h3>
-      <p data-translate="widgets.login.fliplet.update.instruction">Your organization has updated its password policy and you will need to update your password to keep meeting the security requirements.</p>
+      <h3 class="aligncenter" data-translate="widgets.login.fliplet.update.title">
+        Your password needs to be updated
+      </h3>
+      <p data-translate="widgets.login.fliplet.update.instruction">
+        Your organization has updated its password policy and you will need to update your password
+        to keep meeting the security requirements.
+      </p>
       <form class="fliplet-force-update-password">
-        <div class="form-group clearfix ">
-          <input type="password" autocomplete="new-password" class="form-control force-update-new-password" name="force-update-new-password" data-translate="[placeholder]widgets.login.fliplet.update.newPasswordPlaceholder" placeholder="Enter new password" required>
+        <div class="form-group clearfix">
+          <input
+            type="password"
+            autocomplete="new-password"
+            class="form-control force-update-new-password"
+            name="force-update-new-password"
+            data-translate="[placeholder]widgets.login.fliplet.update.newPasswordPlaceholder"
+            placeholder="Enter new password"
+            required
+          />
         </div>
-        <div class="form-group clearfix ">
-          <input type="password" autocomplete="new-password" class="form-control force-update-confirm-password" name="force-update-confirm-password" data-translate="[placeholder]widgets.login.fliplet.update.confirmPasswordPlaceholder" placeholder="Confirm new password" required>
+        <div class="form-group clearfix">
+          <input
+            type="password"
+            autocomplete="new-password"
+            class="form-control force-update-confirm-password"
+            name="force-update-confirm-password"
+            data-translate="[placeholder]widgets.login.fliplet.update.confirmPasswordPlaceholder"
+            placeholder="Confirm new password"
+            required
+          />
         </div>
-        <p class="force-update-new-password-error text-danger text-center hidden" data-translate="widgets.login.fliplet.update.mismatch">Passwords don't match.</p>
+        <p
+          class="force-update-new-password-error text-danger text-center hidden"
+          data-translate="widgets.login.fliplet.update.mismatch"
+        >
+          Passwords don't match.
+        </p>
         <div class="login-button-holder">
-          <button type="submit" class="btn btn-primary btn-force-update-pass" data-translate="widgets.login.fliplet.update.actions.update">Update password</button>
-          <button type="button" class="btn btn-link btn-force-update-cancel" data-translate="widgets.login.fliplet.update.actions.cancel">Cancel</button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-force-update-pass"
+            data-translate="widgets.login.fliplet.update.actions.update"
+          >
+            Update password
+          </button>
+          <button
+            type="button"
+            class="btn btn-link btn-force-update-cancel"
+            data-translate="widgets.login.fliplet.update.actions.cancel"
+          >
+            Cancel
+          </button>
         </div>
       </form>
     </div>

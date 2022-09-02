@@ -76,7 +76,6 @@ Fliplet.Widget.instance('login', function(data) {
       updateDefault: T('widgets.login.fliplet.update.actions.update'),
       updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
     };
-    var genericErrorMessage = '<p>' + T('widgets.login.fliplet.errors.unableLogin') + '</p>';
 
     _this.$container.translate();
 
@@ -260,14 +259,9 @@ Fliplet.Widget.instance('login', function(data) {
           action: 'login_fail'
         });
 
-        var errorMessage = (err && err.message || err.description) || genericErrorMessage;
+        var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
 
-        if (err && err.responseJSON) {
-          errorMessage = err.responseJSON.message;
-        }
-
-        _this.$container.find('.login-error-holder').html(errorMessage);
-        _this.$container.find('.login-error-holder').addClass('show');
+        _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
         calculateElHeight($('.state.present'));
       });
     });
@@ -362,10 +356,12 @@ Fliplet.Widget.instance('login', function(data) {
         $('[data-state="reset-success"]').removeClass('future').addClass('present');
         $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
         calculateElHeight($('.state.present'));
-      }).catch(function() {
+      }).catch(function(error) {
+        var errorMessage = Fliplet.parseError(error, T('widgets.login.fliplet.errors.verificationFailed'));
+
         $('.state.present').removeClass('present').addClass('future');
         $('[data-state="forgot-code"]').removeClass('past').addClass('present');
-        $('.forgot-verify-error').removeClass('hidden');
+        $('.forgot-verify-error').html(errorMessage).removeClass('hidden');
         $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
         calculateElHeight($('.state.present'));
       });
