@@ -193,13 +193,9 @@
 
       return getData.then(function(response) {
         return userMustSetupAccount(response).then(function(setupRequired) {
-          return new Promise(function(resolve, reject) {
-            if (setupRequired) {
-              goToAccountSetup().then(resolve).catch(reject);
-            } else {
-              resolve();
-            }
-          });
+          if (setupRequired) {
+            return goToAccountSetup();
+          }
         }).then(function() {
           Fliplet.Hooks.run('flipletAccountValidated');
         });
