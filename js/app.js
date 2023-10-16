@@ -117,14 +117,17 @@
 
         data = data || {};
 
+        var userIsLinkedToSso = !!_.keys(_.get(data, 'user.preferences.sso')).length;
+        var mustLinkTwoFactor = !userIsLinkedToSso && data.mustLinkTwoFactor;
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
           && (!_.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
+        var passwordMustBeChanged = !userIsLinkedToSso && _.get(data, 'policy.password.mustBeChanged');
 
-        return data.mustLinkTwoFactor
+        return mustLinkTwoFactor
           || data.mustUpdateProfile
           || hasAgreementsToReview
-          || _.get(data, 'policy.password.mustBeChanged');
+          || passwordMustBeChanged;
       });
     }
 
