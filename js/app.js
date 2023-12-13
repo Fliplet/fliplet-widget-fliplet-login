@@ -117,7 +117,10 @@
 
         data = data || {};
 
-        var userIsLinkedToSso = !!_.keys(_.get(data, 'user.preferences.sso')).length;
+        var ssoCredential = _.find(data.credentialTypes, function(credential) {
+          return credential.type.indexOf('sso-') === 0;
+        });
+        var userIsLinkedToSso = !!(ssoCredential && _.keys(_.get(data, 'user.preferences.sso')).length);
         var mustLinkTwoFactor = !userIsLinkedToSso && data.mustLinkTwoFactor;
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
