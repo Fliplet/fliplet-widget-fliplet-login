@@ -8,7 +8,7 @@
   position: absolute;
   width: 100%;
   text-align: center;
-  display: none;
+  opacity: 0;
   pointer-events: none;
   -webkit-transform: translate3d(0, 0, 0);
   transform: translate3d(0, 0, 0);
@@ -26,7 +26,7 @@
 }
 
 .content-wrapper .state.present {
-  display: block;
+  opacity: 1;
   pointer-events: all;
   -webkit-transition: all 0.25s ease;
   transition: all 0.25s ease;
@@ -118,12 +118,12 @@
 /* OFFLINE STATUS */
 
 body.device-offline .link-text {
-  color: #d4d4d4;
+  color: #D4D4D4;
 }
 
 body.device-offline .link-button-primary {
-  color: #fff;
-  background-color: #d4d4d4;
+  color: #FFF;
+  background-color: #D4D4D4;
   pointer-events: none;
 }
 /* END OFFLINE STATUS */
