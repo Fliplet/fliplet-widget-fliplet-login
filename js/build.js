@@ -516,9 +516,11 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     function initSession() {
+      let preserveSession;
       Fliplet.User.getCachedSession()
         .then(function(session) {
-          var passport = session && session.accounts && session.accounts.login.fliplet;
+          preserveSession = session;
+          var passport = session && session.accounts && session.accounts.flipletLogin;
 
           if (passport) {
             session.user = _.extend(session.user, passport[0]);
@@ -553,6 +555,14 @@ Fliplet.Widget.instance('login', function(data) {
 
           if (Fliplet.Env.get('interact')) {
             return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
+          }
+
+          // Ensures that in preview mode only when no passport is found, user is prompted to login screen
+          const hasSessionNoPassport = preserveSession && !preserveSession.server || !preserveSession.server.passports || !Object.keys(preserveSession.server.passports).length;
+          const isSourceStudio = preserveSession && preserveSession.client && preserveSession.client.source === 'studio'
+
+          if (isSourceStudio && hasSessionNoPassport) {
+            return Promise.reject('Preventing navigation to another screen in Preview mode.');
           }
 
           var navigate = Fliplet.Navigate.to(_this.data.action);
