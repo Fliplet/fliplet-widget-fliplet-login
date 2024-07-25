@@ -518,7 +518,7 @@ Fliplet.Widget.instance('login', function(data) {
     function initSession() {
       Fliplet.User.getCachedSession()
         .then(function(session) {
-          var passport = session && session.accounts && session.accounts.login.fliplet;
+          var passport = session && session.accounts && session.accounts.flipletLogin;
 
           if (passport) {
             session.user = _.extend(session.user, passport[0]);
@@ -557,7 +557,7 @@ Fliplet.Widget.instance('login', function(data) {
 
           return Fliplet.Session.get().then(function(session) {
             if (session.client && session.client.source === 'studio') {
-              return Promise.reject('Logout prevented in preview mode.');
+              return Promise.reject('Preventing navigation to another screen in Preview mode.');
             }
 
             var navigate = Fliplet.Navigate.to(_this.data.action);
