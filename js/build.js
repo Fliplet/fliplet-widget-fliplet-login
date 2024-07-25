@@ -516,8 +516,10 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     function initSession() {
+      let preserveSession;
       Fliplet.User.getCachedSession()
         .then(function(session) {
+          preserveSession = session;
           var passport = session && session.accounts && session.accounts.flipletLogin;
 
           if (passport) {
@@ -555,17 +557,19 @@ Fliplet.Widget.instance('login', function(data) {
             return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
           }
 
-          return Fliplet.Session.get().then(function(session) {
-            if (session.client && session.client.source === 'studio') {
-              return Promise.reject('Preventing navigation to another screen in Preview mode.');
-            }
+          // Ensures that in preview mode only when no passport is found, user is prompted to login screen
+          const hasSessionNoPassport = preserveSession && !preserveSession.server || !preserveSession.server.passports || !Object.keys(preserveSession.server.passports).length;
+          const isSourceStudio = preserveSession && preserveSession.client && preserveSession.client.source === 'studio'
 
-            var navigate = Fliplet.Navigate.to(_this.data.action);
+          if (isSourceStudio && hasSessionNoPassport) {
+            return Promise.reject('Preventing navigation to another screen in Preview mode.');
+          }
 
-            if (typeof navigate === 'object' && typeof navigate.then === 'function') {
-              return navigate;
-            }
-          });
+          var navigate = Fliplet.Navigate.to(_this.data.action);
+
+          if (typeof navigate === 'object' && typeof navigate.then === 'function') {
+            return navigate;
+          }
         })
         .catch(function(error) {
           console.warn(error);
