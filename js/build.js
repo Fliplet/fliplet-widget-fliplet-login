@@ -555,11 +555,17 @@ Fliplet.Widget.instance('login', function(data) {
             return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
           }
 
-          var navigate = Fliplet.Navigate.to(_this.data.action);
+          return Fliplet.Session.get().then(function(session) {
+            if (session.client && session.client.source === 'studio') {
+              return Promise.reject('Logout prevented in preview mode.');
+            }
 
-          if (typeof navigate === 'object' && typeof navigate.then === 'function') {
-            return navigate;
-          }
+            var navigate = Fliplet.Navigate.to(_this.data.action);
+
+            if (typeof navigate === 'object' && typeof navigate.then === 'function') {
+              return navigate;
+            }
+          });
         })
         .catch(function(error) {
           console.warn(error);
