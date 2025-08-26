@@ -3,6 +3,12 @@ Fliplet.Widget.instance('login', function(data) {
   var TWO_FACTOR_ERROR_CODE = 428;
   var ONE_TIME_2FA_OPTION = 'onetime';
 
+  /**
+   * LOGIN_FLAG_KEY flag will be utilized by App List component to
+   * identify whether user has navigated from fliplet login screen
+   */
+  var LOGIN_FLAG_KEY = 'login_flag';
+
   _this.$container = $(this);
   _this.data = data;
   _this.pvNameStorage = 'fliplet_login_component';
@@ -169,6 +175,7 @@ Fliplet.Widget.instance('login', function(data) {
                 Fliplet.Navigate.defaults.disableShare = defaultShare;
               });
             }).then(function() {
+              Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
               onLogin();
             });
           }
@@ -597,6 +604,8 @@ Fliplet.Widget.instance('login', function(data) {
         if (!user) {
           return Promise.reject('Login failed. Please try again later.');
         }
+
+        Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
 
         // Add organization data to response
         return Fliplet.API.request({
