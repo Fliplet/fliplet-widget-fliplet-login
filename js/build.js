@@ -540,15 +540,28 @@ Fliplet.Widget.instance('login', function(data) {
             return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
           }
 
-          // Update stored email address based on retrieved session
-          return Fliplet.Login.updateUserStorage({
+          let updatedUser = {
             id: session.user.id,
             region: session.auth_token.substr(0, 2),
             userRoleId: session.user.userRoleId,
             authToken: session.user.auth_token,
             email: session.user.email,
             legacy: session.legacy
-          });
+          };
+
+          if (session && session.server &&
+              session.server.passports &&
+              session.server.passports.flipletLogin &&
+              session.server.passports.flipletLogin.length) {
+            const flLoginUser = session.server.passports.flipletLogin[0];
+            updatedUser.email = flLoginUser.email || updatedUser.email;
+            updatedUser.authToken = flLoginUser.auth_token || updatedUser.authToken;
+            updatedUser.region = flLoginUser.region || updatedUser.region;
+            updatedUser.userRoleId = flLoginUser.userRoleId || updatedUser.userRoleId;
+          }
+
+          // Update stored email address based on retrieved session
+          return Fliplet.Login.updateUserStorage(updatedUser);
         })
         .then(function() {
           if (!Fliplet.Navigator.isOnline()) {
