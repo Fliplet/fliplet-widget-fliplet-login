@@ -554,11 +554,15 @@ Fliplet.Widget.instance('login', function(data) {
               session.server.passports &&
               session.server.passports.flipletLogin &&
               session.server.passports.flipletLogin.length) {
-            const flLoginUser = session.server.passports.flipletLogin[0];
-            updatedUser.email = flLoginUser.email || updatedUser.email;
-            updatedUser.authToken = flLoginUser.auth_token || updatedUser.authToken;
-            updatedUser.region = flLoginUser.region || updatedUser.region;
-            updatedUser.userRoleId = flLoginUser.userRoleId || updatedUser.userRoleId;
+            const flLoginUser = session.server.passports.flipletLogin[0] || {};
+
+            updatedUser = {
+              ...updatedUser,
+              email: flLoginUser.email || updatedUser.email,
+              authToken: flLoginUser.auth_token || updatedUser.authToken,
+              region: flLoginUser.region || updatedUser.region,
+              userRoleId: flLoginUser.userRoleId || updatedUser.userRoleId
+            };
           }
 
           // Update stored email address based on retrieved session
