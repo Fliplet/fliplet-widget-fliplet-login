@@ -549,6 +549,7 @@ Fliplet.Widget.instance('login', function(data) {
             legacy: session.legacy
           };
 
+          // If passport found, then store details from there
           if (session && session.server &&
               session.server.passports &&
               session.server.passports.flipletLogin &&
