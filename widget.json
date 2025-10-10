@@ -12,6 +12,7 @@
   "interface": {
     "dependencies": [
       "fliplet-core",
+      "fliplet-utils",
       "fliplet-studio-ui",
       "lodash"
     ],
@@ -27,6 +28,7 @@
       "bootstrap",
       "lodash",
       "fliplet-security",
+      "fliplet-utils",
       "fliplet-session"
     ],
     "appAssets": [

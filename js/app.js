@@ -86,7 +86,7 @@
             'Auth-token': storage.auth_token
           }
         }).then(function(data) {
-          _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
+          Fliplet.Utils.set(response, 'userOrganizations', Fliplet.Utils.get(data, 'organizations', []));
 
           return response;
         });
@@ -94,7 +94,7 @@
     }
 
     function isOrganizationAdmin(data) {
-      return !!_.find(data.userOrganizations, {
+      return !!Fliplet.Utils.find(data.userOrganizations, {
         organizationUser: {
           organizationRoleId: ORG_ADMIN_ROLE_ID
         }
@@ -117,15 +117,15 @@
 
         data = data || {};
 
-        var ssoCredential = _.find(data.credentialTypes, function(credential) {
+        var ssoCredential = Fliplet.Utils.find(data.credentialTypes, function(credential) {
           return credential.type.indexOf('sso-') === 0;
         });
-        var userIsLinkedToSso = !!(ssoCredential && _.keys(_.get(data, 'user.preferences.sso')).length);
+        var userIsLinkedToSso = !!(ssoCredential && Fliplet.Utils.keys(Fliplet.Utils.get(data, 'user.preferences.sso')).length);
         var mustLinkTwoFactor = !userIsLinkedToSso && data.mustLinkTwoFactor;
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
-          && (!_.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
-        var passwordMustBeChanged = !userIsLinkedToSso && _.get(data, 'policy.password.mustBeChanged');
+          && (!Fliplet.Utils.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
+        var passwordMustBeChanged = !userIsLinkedToSso && Fliplet.Utils.get(data, 'policy.password.mustBeChanged');
 
         return mustLinkTwoFactor
           || data.mustUpdateProfile
@@ -242,7 +242,7 @@
     Fliplet.Cache.remove(cacheKey);
 
     // Set app storage flag so validation results can be ignored for impersonated users
-    Fliplet.Login.setSkipSetupStorage(_.get(data, 'userProfile.impersonatedFrom'));
+    Fliplet.Login.setSkipSetupStorage(Fliplet.Utils.get(data, 'userProfile.impersonatedFrom'));
 
     Fliplet.Hooks.on('flipletAccountValidated', function() {
       // When account is validated, set cache to avoid another immediate check on the next page

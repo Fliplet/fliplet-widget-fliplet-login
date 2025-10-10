@@ -104,7 +104,7 @@ Fliplet.Widget.instance('login', function(data) {
 
           $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
 
-          if (_.isEmpty(credential.types)) {
+          if (Fliplet.Utils.isEmpty(credential.types)) {
             // Switch to password reset
             $('.btn-forgot-pass').trigger('click');
 
@@ -115,7 +115,7 @@ Fliplet.Widget.instance('login', function(data) {
             return;
           }
 
-          var ssoCredential = _.find(credential.types, function(credential) {
+          var ssoCredential = Fliplet.Utils.find(credential.types, function(credential) {
             return credential.type.indexOf('sso-') === 0;
           });
 
@@ -136,10 +136,10 @@ Fliplet.Widget.instance('login', function(data) {
                 onclose: function() {
                   Fliplet.Session.get().then(function(session) {
                     var passport = session && session.accounts && session.accounts.flipletLogin;
-                    var user = _.get(session, 'server.passports.flipletLogin', [])[0];
+                    var user = Fliplet.Utils.get(session, 'server.passports.flipletLogin', [])[0];
 
                     if (passport) {
-                      session.user = _.extend(session.user, passport[0]);
+                      session.user = Fliplet.Utils.extend(session.user, passport[0]);
                       session.user.type = null;
                     }
 
@@ -201,7 +201,7 @@ Fliplet.Widget.instance('login', function(data) {
       };
 
       login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+        var user = Fliplet.Utils.get(response, 'session.server.passports.flipletLogin', [])[0];
 
         if (!user) {
           return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
@@ -464,7 +464,7 @@ Fliplet.Widget.instance('login', function(data) {
       $('.help-two-factor').addClass('hidden');
       loginOptions.twofactor = twoFactorCode;
       login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+        var user = Fliplet.Utils.get(response, 'session.server.passports.flipletLogin', [])[0];
 
         if (!user) {
           return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
@@ -525,7 +525,7 @@ Fliplet.Widget.instance('login', function(data) {
           var passport = session && session.accounts && session.accounts.flipletLogin;
 
           if (passport) {
-            session.user = _.extend(session.user, passport[0]);
+            session.user = Fliplet.Utils.extend(session.user, passport[0]);
             session.user.type = null;
           }
 
@@ -592,7 +592,7 @@ Fliplet.Widget.instance('login', function(data) {
         url: 'v1/auth/login',
         data: options
       }).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+        var user = Fliplet.Utils.get(response, 'session.server.passports.flipletLogin', [])[0];
 
         if (!user) {
           return Promise.reject('Login failed. Please try again later.');
@@ -605,7 +605,7 @@ Fliplet.Widget.instance('login', function(data) {
             'Auth-token': user.auth_token
           }
         }).then(function(data) {
-          _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
+          Fliplet.Utils.set(response, 'userOrganizations', Fliplet.Utils.get(data, 'organizations', []));
 
           return response;
         });
