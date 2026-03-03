@@ -163,6 +163,20 @@
               Fliplet.Navigate.defaults.disableShare = defaultShare;
             });
           });
+        }).catch(function(err) {
+          console.error('[Fliplet.Login] Failed to obtain state token', err);
+          Fliplet.Navigate.defaults.disableShare = defaultShare;
+          return new Promise(function(resolve, reject) {
+            Fliplet.Navigate.url({
+              url: (Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/redirect?auth_token=' + storage.auth_token + '&utm_source=com.fliplet.login',
+              inAppBrowser: true,
+              onclose: function() {
+                validateAccount().then(resolve).catch(reject);
+              }
+            }).then(function() {
+              Fliplet.Navigate.defaults.disableShare = defaultShare;
+            });
+          });
         });
       });
     }
