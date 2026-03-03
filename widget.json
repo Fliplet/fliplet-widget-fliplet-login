@@ -12,8 +12,8 @@
   "interface": {
     "dependencies": [
       "fliplet-core",
-      "fliplet-studio-ui",
-      "lodash"
+      "fliplet-utils",
+      "fliplet-studio-ui"
     ],
     "assets": [
       "vendor/jquery.debounce.js",
@@ -25,8 +25,8 @@
     "dependencies": [
       "fliplet-core",
       "bootstrap",
-      "lodash",
       "fliplet-security",
+      "fliplet-utils",
       "fliplet-session"
     ],
     "appAssets": [
