@@ -150,7 +150,10 @@
         // auth_token never appears in the URL opened in the in-app browser.
         return Fliplet.API.request({
           url: 'v1/session/authorize/state',
-          method: 'POST'
+          method: 'POST',
+          headers: {
+            'Auth-token': storage.auth_token
+          }
         }).then(function(response) {
           return new Promise(function(resolve, reject) {
             Fliplet.Navigate.url({
