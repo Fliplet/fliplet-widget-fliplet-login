@@ -70,10 +70,11 @@ Fliplet.Widget.instance('login', function(data) {
     return Fliplet.Env.get('appId');
   }
 
-  function buildLoginUrl(returnMode, origin) {
+  function buildLoginUrl(returnMode, origin, callback) {
     var params = [];
     params.push('return=' + encodeURIComponent(returnMode));
     if (origin) params.push('origin=' + encodeURIComponent(origin));
+    if (callback) params.push('callback=' + encodeURIComponent(callback));
     var appId = getAppId();
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
@@ -171,12 +172,14 @@ Fliplet.Widget.instance('login', function(data) {
 
   /**
    * Open the unified sign-in page in an InAppBrowser (Cordova native).
-   * The popup navigates to /v1/auth/return-token on success; we intercept
-   * that navigation, capture the token, and close the IAB.
+   * Pass the API's /v1/auth/return-token sentinel as the callback URL —
+   * the same contract the CLI and VS Code extension use, just with a
+   * Fliplet-controlled URL instead of localhost / vscode://. We intercept
+   * the navigation to that URL, capture the token, and close the IAB.
    */
   function openSignInIAB() {
-    var loginUrl = buildLoginUrl('callback', null);
     var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
+    var loginUrl = buildLoginUrl('callback', null, callbackPrefix);
 
     showLoadingState();
 
@@ -231,6 +234,13 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     showLoadingState();
+
+    // Mirror what Fliplet.Session.run()'s storeSession did in the old
+    // same-window login: set window.ENV.user.auth_token so that any
+    // subsequent API calls on this page (including the one made by
+    // Fliplet.Login.validateAccount below) authenticate as the signed-in
+    // user, not as the app's bootstrap appToken.
+    Fliplet.User.setAuthToken(data.token);
 
     return Fliplet.Login.updateUserStorage({
       id: data.user.id,
@@ -307,36 +317,40 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // Already-signed-in detection: skip the button entirely if a session is
-  // already cached. Unchanged from the previous widget version.
+  // Already-signed-in detection: skip the button entirely if a Fliplet
+  // user session is already stored locally for this app.
+  //
+  // Unlike the old master implementation, this intentionally does NOT use
+  // Fliplet.User.getCachedSession(). On a full page reload, Fliplet
+  // bootstrap calls /v1/session with the server-injected appToken bearer
+  // and overwrites the cached session with the appToken's session — so
+  // getCachedSession() always reports `user.type === 'appToken'` on
+  // subsequent loads, regardless of whether the user is logged in.
+  //
+  // Instead we read directly from the Fliplet.App.Storage entry that
+  // `Fliplet.Login.updateUserStorage()` writes after a successful sign-in.
+  // This is the same pattern core.js already uses in `getOrganizations`
+  // and similar call sites — `fliplet_login_component.auth_token` is the
+  // source of truth for "this user is signed in to the app" and persists
+  // across page reloads (App.Storage is durable per-app).
   // ──────────────────────────────────────────────────────────────────────
 
+  var FLIPLET_LOGIN_STORAGE_KEY = 'fliplet_login_component';
+
   function initSession() {
-    var preserveSession;
-
-    Fliplet.User.getCachedSession()
-      .then(function(session) {
-        preserveSession = session;
-
-        var passport = session && session.accounts && session.accounts.flipletLogin;
-
-        if (passport) {
-          session.user = Fliplet.Utils.extend(session.user, passport[0]);
-          session.user.type = null;
-        }
-
-        if (!session || !session.user || session.user.type !== null) {
+    Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY)
+      .then(function(stored) {
+        if (!stored || !stored.auth_token) {
           return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
         }
 
-        return Fliplet.Login.updateUserStorage({
-          id: session.user.id,
-          region: session.auth_token.substr(0, 2),
-          userRoleId: session.user.userRoleId,
-          authToken: session.user.auth_token,
-          email: session.user.email,
-          legacy: session.legacy
-        });
+        // Restore the auth token in window.ENV so any subsequent API calls
+        // from this page (including those Fliplet.Login.validateAccount
+        // makes via Fliplet.API.request) authenticate as the signed-in user
+        // and not as the app's bootstrap appToken.
+        Fliplet.User.setAuthToken(stored.auth_token);
+
+        return stored;
       })
       .then(function() {
         if (!Fliplet.Navigator.isOnline()) {
@@ -352,14 +366,6 @@ Fliplet.Widget.instance('login', function(data) {
 
         if (Fliplet.Env.get('interact')) {
           return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
-        }
-
-        // Ensures that in preview mode only when no passport is found, user is prompted to login screen
-        var hasSessionNoPassport = preserveSession && !preserveSession.server || !preserveSession.server.passports || !Object.keys(preserveSession.server.passports).length;
-        var isSourceStudio = preserveSession && preserveSession.client && preserveSession.client.source === 'studio';
-
-        if (isSourceStudio && hasSessionNoPassport) {
-          return Promise.reject('Preventing navigation to another screen in Preview mode.');
         }
 
         var navigate = Fliplet.Navigate.to(_this.data.action);
