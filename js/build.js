@@ -1,7 +1,5 @@
 Fliplet.Widget.instance('login', function(data) {
   var _this = this;
-  var TWO_FACTOR_ERROR_CODE = 428;
-  var ONE_TIME_2FA_OPTION = 'onetime';
 
   /**
    * LOGIN_FLAG_KEY flag will be utilized by App List component to
@@ -11,17 +9,11 @@ Fliplet.Widget.instance('login', function(data) {
 
   _this.$container = $(this);
   _this.data = data;
-  _this.pvNameStorage = 'fliplet_login_component';
-
 
   // Do not track login related redirects
   if (typeof _this.data.action !== 'undefined') {
     _this.data.action.track = false;
   }
-
-  var loginOptions;
-  var userEnteredCode;
-  var userPassword;
 
   document.addEventListener('offline', function() {
     _this.$container.addClass('login-offline');
@@ -29,20 +21,12 @@ Fliplet.Widget.instance('login', function(data) {
   });
 
   if (Fliplet.Navigate.query.error) {
-    _this.$container.find('.login-error-holder').html(Fliplet.Navigate.query.error);
+    _this.$container.find('.login-error-holder').html(Fliplet.Navigate.query.error).addClass('show');
   }
 
-  // INITIATE FUNCTIONS
-  function calculateElHeight(el) {
-    if (el.hasClass('start')) {
-      $('.state[data-state=auth]').removeClass('start').addClass('present');
-    }
-
-    var elementHeight = el.outerHeight();
-
-    el.parents('.content-wrapper').css('height', elementHeight);
-    el.css('overflow', 'auto');
-  }
+  // ──────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ──────────────────────────────────────────────────────────────────────
 
   function scheduleCheck() {
     setTimeout(function() {
@@ -62,589 +46,358 @@ Fliplet.Widget.instance('login', function(data) {
 
       $loginHolder.fadeOut(100, function() {
         _this.$container.find('.content-wrapper').show();
-        calculateElHeight($('.state.start'));
       });
     }, 100);
   }
 
-  function init() {
-    var LABELS = {
-      loginDefault: T('widgets.login.fliplet.login.actions.login'),
-      loginProcessing: T('widgets.login.fliplet.login.actions.loginProgress'),
-      authDefault: T('widgets.login.fliplet.verify.actions.verify'),
-      authProcessing: T('widgets.login.fliplet.verify.actions.verifyProgress'),
-      resetDefault: T('widgets.login.fliplet.reset.actions.reset'),
-      resetProcessing: T('widgets.login.fliplet.reset.actions.resetProgress'),
-      sendDefault: T('widgets.login.fliplet.twoFactor.actions.sendCode'),
-      sendProcessing: T('widgets.login.fliplet.twoFactor.actions.sendCodeProgress'),
-      continueDefault: T('widgets.login.fliplet.login.actions.continue'),
-      continueProcessing: T('widgets.login.fliplet.login.actions.continueProgress'),
-      updateDefault: T('widgets.login.fliplet.update.actions.update'),
-      updateProcessing: T('widgets.login.fliplet.update.actions.updateProgress')
-    };
+  function getApiHost() {
+    // Inside a published Fliplet app, Fliplet.Env.get('apiUrl') can return
+    // an apps-host-proxied URL (e.g. https://apps.fliplet.test/...) which
+    // doesn't serve the /v1/auth/* routes. primaryApiUrl is the canonical
+    // API host (e.g. https://api.fliplet.test/) — prefer it when available.
+    return Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl');
+  }
 
-    _this.$container.translate();
+  function getApiOrigin() {
+    try {
+      return new URL(getApiHost()).origin;
+    } catch (err) {
+      return getApiHost().replace(/\/$/, '');
+    }
+  }
 
-    $('.login-form').on('submit', function(e) {
-      e.preventDefault();
+  function getAppId() {
+    return Fliplet.Env.get('appId');
+  }
 
-      var $form = $(this);
-      var userEmail = ($form.find('.login_email').val() || '').toLowerCase().trim();
+  function buildLoginUrl(returnMode, origin) {
+    var params = [];
+    params.push('return=' + encodeURIComponent(returnMode));
+    if (origin) params.push('origin=' + encodeURIComponent(origin));
+    var appId = getAppId();
+    if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
-      if (!userEmail) {
-        return Fliplet.UI.Toast(T('widgets.login.fliplet.infoToast.enterEmail'));
+    var apiHost = getApiHost();
+    if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
+
+    return apiHost + 'v1/auth/login?' + params.join('&');
+  }
+
+  function parseQueryString(url) {
+    var query = (url.split('?')[1] || '').split('#')[0];
+    var pairs = query.split('&');
+    var result = {};
+
+    pairs.forEach(function(pair) {
+      if (!pair) return;
+      var idx = pair.indexOf('=');
+      if (idx === -1) return;
+      result[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(pair.slice(idx + 1));
+    });
+
+    return result;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Sign-in flows
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Open the unified sign-in page in a popup window (desktop / mobile web).
+   * The popup postMessages the auth token back to the opener on success;
+   * the widget listens for the message, then runs handleAuthSuccess.
+   */
+  function openSignInPopup() {
+    var width = 480;
+    var height = 720;
+    var left = Math.max(0, Math.floor((window.screen.width - width) / 2));
+    var top = Math.max(0, Math.floor((window.screen.height - height) / 2));
+    var origin = window.location.origin;
+    var loginUrl = buildLoginUrl('postmessage', origin);
+    var apiOrigin = getApiOrigin();
+    var pollClosed;
+
+    function cleanup() {
+      window.removeEventListener('message', onMessage);
+      if (pollClosed) {
+        clearInterval(pollClosed);
+        pollClosed = null;
       }
+    }
 
-      if (!$form.attr('data-auth-type')) {
-        $form.find('.btn-continue').html(LABELS.continueProcessing).addClass('disabled');
+    function onMessage(event) {
+      // Strict origin check — only accept messages from the API host
+      if (event.origin !== apiOrigin) return;
+      if (!event.data || typeof event.data !== 'object') return;
 
-        Fliplet.API.request({
-          method: 'POST',
-          url: 'v1/auth/credential-types',
-          data: {
-            email: userEmail,
-            target_session_auth_token: Fliplet.User.getAuthToken()
-          }
-        }).then(function(credential) {
-          credential = credential || {};
-
-          $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
-
-          if (_.isEmpty(credential.types)) {
-            // Switch to password reset
-            $('.btn-forgot-pass').trigger('click');
-
-            // Trigger password reset
-            $('.forgot-email-address').val(userEmail);
-            $('.fliplet-forgot-password').trigger('submit');
-
-            return;
-          }
-
-          var ssoCredential = _.find(credential.types, function(credential) {
-            return credential.type.indexOf('sso-') === 0;
-          });
-
-          if (ssoCredential) {
-            // Redirect user to SSO login URL
-            var ssoLoginUrl = (credential.host || Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/login/' + ssoCredential.type + '?token=' + ssoCredential.token;
-            var defaultShare = Fliplet.Navigate.defaults.disableShare;
-
-            Fliplet.Navigate.defaults.disableShare = true;
-
-            return new Promise(function(resolve, reject) {
-              Fliplet.Navigate.to({
-                action: 'url',
-                inAppBrowser: true,
-                basicAuth: ssoCredential.basicAuth,
-                handleAuthorization: false,
-                url: ssoLoginUrl,
-                onclose: function() {
-                  Fliplet.Session.get().then(function(session) {
-                    var passport = session && session.accounts && session.accounts.flipletLogin;
-                    var user = _.get(session, 'server.passports.flipletLogin', [])[0];
-
-                    if (passport) {
-                      session.user = _.extend(session.user, passport[0]);
-                      session.user.type = null;
-                    }
-
-                    if (!user || !session || !session.user || session.user.type !== null) {
-                      return reject(T('widgets.login.fliplet.errors.loginNotFinished'));
-                    }
-
-                    // Update stored email address based on retrieved session
-                    Fliplet.Login.updateUserStorage({
-                      id: session.user.id,
-                      region: session.auth_token.substr(0, 2),
-                      userRoleId: session.user.userRoleId,
-                      authToken: user.auth_token,
-                      email: session.user.email,
-                      legacy: session.legacy
-                    }).then(function() {
-                      return Fliplet.Hooks.run('login', {
-                        passport: 'fliplet',
-                        userProfile: user
-                      });
-                    }).then(function() {
-                      return Fliplet.Login.validateAccount().then(resolve).catch(reject);
-                    });
-                  });
-                }
-              }).then(function() {
-                Fliplet.Navigate.defaults.disableShare = defaultShare;
-              });
-            }).then(function() {
-              Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
-              onLogin();
-            });
-          }
-
-          $form.attr('data-auth-type', 'password');
-          $form.find('.login_password').focus().prop('required', true);
-          calculateElHeight($('.state.present'));
-        }).catch(function(error) {
-          $form.find('.btn-continue').html(LABELS.continueDefault).removeClass('disabled');
-          Fliplet.UI.Toast.error(error, {
-            message: T('widgets.login.fliplet.errorToast.loginFailed')
-          });
-        });
-
-        return;
+      if (event.data.type === 'fliplet-login-success') {
+        cleanup();
+        handleAuthSuccess(event.data);
+      } else if (event.data.type === 'fliplet-login-error') {
+        Fliplet.UI.Toast.error(event.data.message || T('widgets.login.fliplet.errors.unableLogin'));
       }
+    }
 
-      _this.$container.find('.btn-login').addClass('disabled');
-      _this.$container.find('.btn-login').html(LABELS.loginProcessing);
-      _this.$container.find('.login-error-holder').removeClass('show');
-      _this.$container.find('.login-error-holder').html('');
+    // Register the listener BEFORE opening the popup to avoid a race
+    // where the popup loads instantly and postMessages before we're ready.
+    window.addEventListener('message', onMessage);
 
-      userPassword = _this.$container.find('.login_password').val();
+    var popup = window.open(
+      loginUrl,
+      'fliplet-login',
+      'width=' + width + ',height=' + height
+        + ',top=' + top + ',left=' + left
+        + ',resizable=yes,scrollbars=yes,menubar=no,toolbar=no'
+    );
 
-      loginOptions = {
-        email: userEmail,
-        password: userPassword,
-        session: true,
-        passport: true
-      };
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      cleanup();
+      Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.popupBlocked'));
+      hideLoadingState();
+      return;
+    }
 
-      login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
+    showLoadingState();
 
-        if (!user) {
-          return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
-        }
+    pollClosed = setInterval(function() {
+      if (popup.closed) {
+        cleanup();
+        // Popup closed without completing — re-enable the button.
+        // No toast: closing the popup is a normal user action, not an error.
+        hideLoadingState();
+      }
+    }, 500);
+  }
 
-        Fliplet.Analytics.trackEvent({
-          category: 'login_fliplet',
-          action: 'login_pass'
-        });
+  /**
+   * Open the unified sign-in page in an InAppBrowser (Cordova native).
+   * The popup navigates to /v1/auth/return-token on success; we intercept
+   * that navigation, capture the token, and close the IAB.
+   */
+  function openSignInIAB() {
+    var loginUrl = buildLoginUrl('callback', null);
+    var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
 
-        return Fliplet.Login.updateUserStorage({
-          id: response.id,
-          region: user.region,
-          userRoleId: user.userRoleId,
-          authToken: user.auth_token,
-          email: user.email,
-          legacy: response.legacy
-        }).then(function() {
-          return Fliplet.Hooks.run('login', {
-            passport: 'fliplet',
-            userProfile: user
-          });
-        }).then(function() {
-          return Fliplet.Login.validateAccount({ data: response });
-        });
-      }).then(function() {
-        _this.$container.find('.btn-login').removeClass('disabled');
-        _this.$container.find('.btn-login').html(LABELS.loginDefault);
+    showLoadingState();
 
-        onLogin();
-      }).catch(function(err) {
-        console.error(err);
-        _this.$container.find('.btn-login').removeClass('disabled');
-        _this.$container.find('.btn-login').html(LABELS.loginDefault);
+    Fliplet.Navigate.url({
+      url: loginUrl,
+      inAppBrowser: true,
+      onload: function(event) {
+        if (!event || !event.url) return;
 
-        if (err && err.status === TWO_FACTOR_ERROR_CODE) {
-          Fliplet.Analytics.trackEvent({
-            category: 'login_fliplet',
-            action: 'login_2fa_required'
-          });
+        if (event.url.indexOf(callbackPrefix) === 0) {
+          var qs = parseQueryString(event.url);
 
-          if (err.responseJSON.condition !== ONE_TIME_2FA_OPTION) {
-            $('.two-factor-resend').removeClass('hidden');
+          if (qs.token) {
+            try {
+              if (event.iab && typeof event.iab.close === 'function') {
+                event.iab.close();
+              }
+            } catch (err) {
+              console.warn('[Fliplet.Login] failed to close IAB:', err);
+            }
+
+            var user = null;
+
+            try {
+              user = JSON.parse(qs.user || 'null');
+            } catch (err) {
+              console.warn('[Fliplet.Login] failed to parse user from callback:', err);
+            }
+
+            handleAuthSuccess({ token: qs.token, user: user });
           }
-
-          $('.state.present').removeClass('present').addClass('past');
-          $('.state[data-state=two-factor-code]').removeClass('future').addClass('present');
-          calculateElHeight($('.state.present'));
-
-          return;
         }
+      },
+      onclose: function() {
+        // User closed the IAB before completing — re-enable the button.
+        // No toast: cancelling is a normal action.
+        hideLoadingState();
+      }
+    });
+  }
 
-        Fliplet.Analytics.trackEvent({
-          category: 'login_fliplet',
-          action: 'login_fail'
-        });
+  // ──────────────────────────────────────────────────────────────────────
+  // Convergence point: both desktop and mobile flows call this with
+  // { token, user }. Reuses the existing post-login glue verbatim.
+  // ──────────────────────────────────────────────────────────────────────
 
-        var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
+  function handleAuthSuccess(data) {
+    if (!data || !data.token || !data.user) {
+      Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+      hideLoadingState();
+      return;
+    }
 
-        _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
-        calculateElHeight($('.state.present'));
+    showLoadingState();
+
+    return Fliplet.Login.updateUserStorage({
+      id: data.user.id,
+      region: data.token.substr(0, 2),
+      userRoleId: data.user.userRoleId,
+      authToken: data.token,
+      email: data.user.email,
+      legacy: data.user.legacy
+    }).then(function() {
+      return Fliplet.Hooks.run('login', {
+        passport: 'fliplet',
+        userProfile: data.user
       });
-    });
-
-    $('.btn-forgot-pass').on('click', function() {
-      $('.state.present').removeClass('present').addClass('past');
-      $('[data-state="forgot-email"]').removeClass('future').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('.btn-login-back').on('click', function() {
-      $('.login-form').attr('data-auth-type', '')
-        .find('.login_email, .login_password').val('').end()
-        .find('.login_password').prop('required', false);
-    });
-
-    $('.btn-forgot-back').on('click', function() {
-      $('.state.present').removeClass('present').addClass('future');
-      $('[data-state="auth"]').removeClass('past').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('.btn-forgot-cancel').on('click', function() {
-      $('[data-state="forgot-new-pass"]').removeClass('present past').addClass('future');
-      $('[data-state="forgot-code"]').removeClass('present past').addClass('future');
-      $('[data-state="forgot-email"]').removeClass('past').addClass('future');
-      $('[data-state="auth"]').removeClass('past').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('.fliplet-forgot-password').on('submit', function(e) {
-      e.preventDefault();
-      $('.forgot-verify-error').addClass('hidden');
-
-      var email = $('.forgot-email-address').val();
-
+    }).then(function() {
+      return Fliplet.Login.validateAccount({ data: data });
+    }).then(function() {
       Fliplet.Analytics.trackEvent({
         category: 'login_fliplet',
-        action: 'forgot_password'
+        action: 'login_pass'
       });
 
-      return Fliplet.API.request({
-        method: 'POST',
-        url: 'v1/auth/forgot?method=code',
-        data: {
-          email: email
-        }
-      }).then(function onRecoverPassCodeSent() {
-        $('.forgot-verify-user-email').text(email);
-        $('.state.present').removeClass('present').addClass('past');
-        $('[data-state="forgot-code"]').removeClass('future').addClass('present');
-        calculateElHeight($('.state.present'));
-      });
-    });
+      // Set the login flag so the App List component knows the user
+      // arrived from the login screen.
+      return Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
+    }).then(function() {
+      // Reset the button state BEFORE attempting navigation. When the
+      // navigation succeeds, the widget unmounts and the reset is a no-op.
+      // When `disableSecurity` is true (preview / dev mode), navigation
+      // is intentionally skipped — without this reset, the button would
+      // be stuck on "Waiting for sign-in…" forever.
+      hideLoadingState();
 
-    $('.fliplet-verify-code').on('submit', function(e) {
-      e.preventDefault();
-      userEnteredCode = $('[name="forgot-verification-code"]').val();
-
-      $('.state.present').removeClass('present').addClass('past');
-      $('[data-state="forgot-new-pass"]').removeClass('future').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('.fliplet-new-password').on('submit', function(e) {
-      e.preventDefault();
-      $('.forgot-new-password-error').addClass('hidden');
-      $('.btn-reset-pass').html(LABELS.resetProcessing).addClass('disabled');
-
-      // Checks if passwords match
-      var email = $('.login_email').val();
-      var password = $('.forgot-new-password').val();
-      var confirmation = $('.forgot-confirm-password').val();
-
-      if (password !== confirmation) {
-        $('.forgot-new-password-error').removeClass('hidden');
-        $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
-        calculateElHeight($('.state.present'));
-
-        return;
-      }
-
-      return Fliplet.API.request({
-        method: 'POST',
-        url: 'v1/auth/reset/' + userEnteredCode,
-        data: {
-          email: email,
-          password: password
-        }
-      }).then(function() {
-        $('.state.present').removeClass('present').addClass('past');
-        $('[data-state="reset-success"]').removeClass('future').addClass('present');
-        $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
-        calculateElHeight($('.state.present'));
-      }).catch(function(error) {
-        var errorMessage = Fliplet.parseError(error, T('widgets.login.fliplet.errors.verificationFailed'));
-
-        $('.state.present').removeClass('present').addClass('future');
-        $('[data-state="forgot-code"]').removeClass('past').addClass('present');
-        $('.forgot-verify-error').html(errorMessage).removeClass('hidden');
-        $('.btn-reset-pass').html(LABELS.resetDefault).removeClass('disabled');
-        calculateElHeight($('.state.present'));
-      });
-    });
-
-    $('.fliplet-force-update-password').on('submit', function(e) {
-      e.preventDefault();
-      $('.force-update-new-password-error').addClass('hidden');
-      $('.btn-force-update-pass').html(LABELS.updateProcessing).addClass('disabled');
-
-      // Checks if passwords match
-      var password = $('.force-update-new-password').val();
-      var confirmation = $('.force-update-confirm-password').val();
-
-      if (password !== confirmation) {
-        $('.force-update-new-password-error').removeClass('hidden');
-        $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
-        calculateElHeight($('.state.present'));
-
-        return;
-      }
-
-      return Fliplet.API.request({
-        method: 'PUT',
-        url: 'v1/user',
-        data: {
-          currentPassword: userPassword,
-          newPassword: password
-        }
-      }).then(function() {
-        if (Fliplet.Env.get('disableSecurity')) {
-          $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
-          console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-
-          return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.passwordUpdated'));
-        }
-
-        Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.passwordUpdated'));
-
-        Fliplet.Navigate.to(_this.data.action);
-      }).catch(function(err) {
-        $('.force-update-new-password-error').html(err.responseJSON.message).removeClass('hidden');
-        $('.btn-force-update-pass').html(LABELS.updateDefault).removeClass('disabled');
-        calculateElHeight($('.state.present'));
-      });
-    });
-
-    $('.btn-reset-success').on('click', function() {
-      $('.state.present').removeClass('present').addClass('past');
-      $('[data-state="auth"]').removeClass('past').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('span.back').on('click', function() {
-      $('.state.present').removeClass('present').addClass('future');
-      $('[data-state="auth"]').removeClass('past').addClass('present');
-      calculateElHeight($('.state.present'));
-    });
-
-    $('.two-factor-resend').on('click', function() {
-      var _that = $(this);
-
-      $('.help-two-factor').addClass('hidden');
-      _that.addClass('disabled');
-      _that.html(LABELS.sendProcessing);
-
-      calculateElHeight($('.state[data-state=two-factor-code]'));
-
-      return login(loginOptions).catch(function(err) {
-        if (err.status === TWO_FACTOR_ERROR_CODE) {
-          _that.removeClass('disabled');
-          _that.html(LABELS.sendDefault);
-          $('.two-factor-sent').removeClass('hidden');
-          calculateElHeight($('.state[data-state=two-factor-code]'));
-
-          return;
-        }
-
-        _that.removeClass('disabled');
-        _that.html(LABELS.sendDefault);
-        $('.two-factor-unable-to-resend').removeClass('hidden');
-        calculateElHeight($('.state[data-state=two-factor-code]'));
-      });
-    });
-
-    $('.fliplet-two-factor').on('submit', function(e) {
-      e.preventDefault();
-
-      var twoFactorCode = $('.two-factor-code').val();
-
-      _this.$container.find('.two-factor-btn').addClass('disabled').html(LABELS.authProcessing);
-
-      if (twoFactorCode === '') {
-        $('.two-factor-not-valid').removeClass('hidden');
-        calculateElHeight($('.state[data-state=two-factor-code]'));
-
-        return;
-      }
-
-      $('.help-two-factor').addClass('hidden');
-      loginOptions.twofactor = twoFactorCode;
-      login(loginOptions).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
-
-        if (!user) {
-          return Promise.reject(T('widgets.login.fliplet.errors.loginFailed'));
-        }
-
-        Fliplet.Analytics.trackEvent({
-          category: 'login_fliplet',
-          action: 'login_pass'
-        });
-
-        return Fliplet.Login.updateUserStorage({
-          id: response.id,
-          region: user.region,
-          userRoleId: user.userRoleId,
-          authToken: user.auth_token,
-          email: user.email,
-          legacy: response.legacy
-        }).then(function() {
-          return Fliplet.Hooks.run('login', {
-            passport: 'fliplet',
-            userProfile: user
-          });
-        }).then(function() {
-          return Fliplet.Login.validateAccount({ data: response });
-        });
-      }).then(function() {
-        _this.$container.find('.two-factor-btn').removeClass('disabled').html(LABELS.authDefault);
-
-        if (Fliplet.Env.get('disableSecurity')) {
-          return;
-        }
-
-        Fliplet.Navigate.to(_this.data.action);
-      }).catch(function() {
-        _this.$container.find('.two-factor-btn').removeClass('disabled').html(LABELS.authDefault);
-        $('.two-factor-not-valid').removeClass('hidden');
-        calculateElHeight($('.state[data-state=two-factor-code]'));
-      });
-    });
-
-    function onLogin() {
       if (Fliplet.Env.get('disableSecurity')) {
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
-
         return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.login'));
       }
 
-      Fliplet.Navigate.to(_this.data.action);
+      return Fliplet.Navigate.to(_this.data.action);
+    }).catch(function(err) {
+      console.error('[Fliplet.Login] handleAuthSuccess failed:', err);
+
+      Fliplet.Analytics.trackEvent({
+        category: 'login_fliplet',
+        action: 'login_fail'
+      });
+
+      var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
+      _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
+      hideLoadingState();
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Loading state on the sign-in button
+  // ──────────────────────────────────────────────────────────────────────
+
+  function showLoadingState() {
+    var $btn = _this.$container.find('.fliplet-login-button');
+
+    if (!$btn.data('original-label')) {
+      $btn.data('original-label', $btn.text().trim());
     }
 
-    function initSession() {
-      let preserveSession;
+    $btn.prop('disabled', true).addClass('loading');
+    $btn.text(T('widgets.login.fliplet.actions.waitingForSignIn'));
+  }
 
-      Fliplet.User.getCachedSession()
-        .then(function(session) {
-          preserveSession = session;
+  function hideLoadingState() {
+    var $btn = _this.$container.find('.fliplet-login-button');
+    $btn.prop('disabled', false).removeClass('loading');
 
-          var passport = session && session.accounts && session.accounts.flipletLogin;
+    var original = $btn.data('original-label');
+    if (original) $btn.text(original);
+  }
 
-          if (passport) {
-            session.user = _.extend(session.user, passport[0]);
-            session.user.type = null;
-          }
+  // ──────────────────────────────────────────────────────────────────────
+  // Already-signed-in detection: skip the button entirely if a session is
+  // already cached. Unchanged from the previous widget version.
+  // ──────────────────────────────────────────────────────────────────────
 
-          if (!session || !session.user || session.user.type !== null) {
-            return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
-          }
+  function initSession() {
+    var preserveSession;
 
-          let updatedUser = {
-            id: session.user.id,
-            region: session.auth_token.substr(0, 2),
-            userRoleId: session.user.userRoleId,
-            authToken: session.user.auth_token,
-            email: session.user.email,
-            legacy: session.legacy
-          };
+    Fliplet.User.getCachedSession()
+      .then(function(session) {
+        preserveSession = session;
 
-          // If passport found, then store details from there
-          if (session && session.server &&
-              session.server.passports &&
-              session.server.passports.flipletLogin &&
-              session.server.passports.flipletLogin.length) {
-            const flLoginUser = session.server.passports.flipletLogin[0] || {};
+        var passport = session && session.accounts && session.accounts.flipletLogin;
 
-            updatedUser = {
-              ...updatedUser,
-              email: flLoginUser.email || updatedUser.email,
-              authToken: flLoginUser.auth_token || updatedUser.authToken,
-              region: flLoginUser.region || updatedUser.region,
-              userRoleId: flLoginUser.userRoleId || updatedUser.userRoleId
-            };
-          }
-
-          // Update stored email address based on retrieved session
-          return Fliplet.Login.updateUserStorage(updatedUser);
-        })
-        .then(function() {
-          if (!Fliplet.Navigator.isOnline()) {
-            return;
-          }
-
-          return Fliplet.Login.validateAccount({ updateUserStorage: true });
-        })
-        .then(function() {
-          if (Fliplet.Env.get('disableSecurity')) {
-            return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWithoutSecurity'));
-          }
-
-          if (Fliplet.Env.get('interact')) {
-            return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
-          }
-
-          // Ensures that in preview mode only when no passport is found, user is prompted to login screen
-          const hasSessionNoPassport = preserveSession && !preserveSession.server || !preserveSession.server.passports || !Object.keys(preserveSession.server.passports).length;
-          const isSourceStudio = preserveSession && preserveSession.client && preserveSession.client.source === 'studio';
-
-          if (isSourceStudio && hasSessionNoPassport) {
-            return Promise.reject('Preventing navigation to another screen in Preview mode.');
-          }
-
-          var navigate = Fliplet.Navigate.to(_this.data.action);
-
-          if (typeof navigate === 'object' && typeof navigate.then === 'function') {
-            showStart();
-
-            return navigate;
-          }
-        })
-        .catch(function(error) {
-          console.warn(error);
-          showStart();
-        });
-    }
-
-    /**
-   * Log the user in using fliplet passport and add user organization data
-   * @param {Object} options - Login options
-   * @returns {Promise<Object>} Login response
-   */
-    function login(options) {
-      return Fliplet.Session.run({
-        method: 'POST',
-        url: 'v1/auth/login',
-        data: options
-      }).then(function(response) {
-        var user = _.get(response, 'session.server.passports.flipletLogin', [])[0];
-
-        if (!user) {
-          return Promise.reject('Login failed. Please try again later.');
+        if (passport) {
+          session.user = Fliplet.Utils.extend(session.user, passport[0]);
+          session.user.type = null;
         }
 
-        Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
+        if (!session || !session.user || session.user.type !== null) {
+          return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
+        }
 
-        // Add organization data to response
-        return Fliplet.API.request({
-          url: 'v1/organizations',
-          headers: {
-            'Auth-token': user.auth_token
-          }
-        }).then(function(data) {
-          _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
-
-          return response;
+        return Fliplet.Login.updateUserStorage({
+          id: session.user.id,
+          region: session.auth_token.substr(0, 2),
+          userRoleId: session.user.userRoleId,
+          authToken: session.user.auth_token,
+          email: session.user.email,
+          legacy: session.legacy
         });
+      })
+      .then(function() {
+        if (!Fliplet.Navigator.isOnline()) {
+          return;
+        }
+
+        return Fliplet.Login.validateAccount({ updateUserStorage: true });
+      })
+      .then(function() {
+        if (Fliplet.Env.get('disableSecurity')) {
+          return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWithoutSecurity'));
+        }
+
+        if (Fliplet.Env.get('interact')) {
+          return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
+        }
+
+        // Ensures that in preview mode only when no passport is found, user is prompted to login screen
+        var hasSessionNoPassport = preserveSession && !preserveSession.server || !preserveSession.server.passports || !Object.keys(preserveSession.server.passports).length;
+        var isSourceStudio = preserveSession && preserveSession.client && preserveSession.client.source === 'studio';
+
+        if (isSourceStudio && hasSessionNoPassport) {
+          return Promise.reject('Preventing navigation to another screen in Preview mode.');
+        }
+
+        var navigate = Fliplet.Navigate.to(_this.data.action);
+
+        if (typeof navigate === 'object' && typeof navigate.then === 'function') {
+          showStart();
+          return navigate;
+        }
+      })
+      .catch(function(error) {
+        console.warn(error);
+        showStart();
       });
-    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // init: wire up the button click and start the session check
+  // ──────────────────────────────────────────────────────────────────────
+
+  function init() {
+    _this.$container.translate();
+
+    _this.$container.find('.fliplet-login-button').on('click', function() {
+      _this.$container.find('.login-error-holder').removeClass('show').empty();
+
+      if (Fliplet.Env.get('platform') === 'web') {
+        openSignInPopup();
+      } else {
+        openSignInIAB();
+      }
+    });
 
     if (Fliplet.Env.get('platform') === 'web') {
       initSession();
 
       if (Fliplet.Env.get('interact')) {
-      // Disables password fields in edit mode to avoid password autofill
-        $('input[type="password"]').prop('disabled', true);
+        // Disable the button in edit mode to prevent accidental clicks
+        _this.$container.find('.fliplet-login-button').prop('disabled', true);
       }
 
       Fliplet.Studio.onEvent(function(event) {
@@ -655,6 +408,7 @@ Fliplet.Widget.instance('login', function(data) {
           }, 500);
         }
       });
+
       _this.$container.on('fliplet_page_reloaded', function() {
         if (Fliplet.Env.get('interact')) {
           setTimeout(function() {
