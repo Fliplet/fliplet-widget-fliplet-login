@@ -1,26 +1,24 @@
 <div data-login-id="{{id}}">
   <div class="login-loader-holder animated">
-    <div class="loader" data-translate="widgets.login.fliplet.loading">Loading...</div>
+    <div class="loader" data-translate="widgets.login.fliplet.loading">{{T "widgets.login.fliplet.loading"}}</div>
   </div>
   <div class="login-form-holder content-wrapper fliplet-login-button-wrapper">
     {{#if heading}}
     <h2>{{heading}}</h2>
-    {{else}}
-    <h2 data-translate="widgets.login.fliplet.title">Welcome to the login of this app</h2>
     {{/if}}
     <div class="login-offline-notification" data-translate="widgets.login.fliplet.offline">
-      Your device is offline
+      {{T "widgets.login.fliplet.offline"}}
     </div>
     <button
       type="button"
       class="btn btn-primary fliplet-login-button"
       data-translate="widgets.login.fliplet.actions.signIn"
     >
-      {{#if buttonLabel}}{{buttonLabel}}{{else}}Sign in{{/if}}
+      {{#if buttonLabel}}{{buttonLabel}}{{else}}{{T "widgets.login.fliplet.actions.signIn"}}{{/if}}
     </button>
     <div class="login-error-holder">
       <p data-translate="widgets.login.fliplet.errors.unableLogin">
-        Unable to login. Try again later.
+        {{T "widgets.login.fliplet.errors.unableLogin"}}
       </p>
     </div>
   </div>
