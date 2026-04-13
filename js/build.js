@@ -62,7 +62,12 @@ Fliplet.Widget.instance('login', function(data) {
     try {
       return new URL(getApiHost()).origin;
     } catch (err) {
-      return getApiHost().replace(/\/$/, '');
+      // Fallback: extract scheme + host manually in case URL() isn't
+      // available (older WebViews). Match up to the third slash.
+      var host = getApiHost();
+      var match = host.match(/^(https?:\/\/[^/]+)/);
+
+      return match ? match[1] : host.replace(/\/$/, '');
     }
   }
 
@@ -108,7 +113,16 @@ Fliplet.Widget.instance('login', function(data) {
    * The popup postMessages the auth token back to the opener on success;
    * the widget listens for the message, then runs handleAuthSuccess.
    */
+  var activePopup = null;
+  var popupTimeout = null;
+  var POPUP_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
   function openSignInPopup() {
+    // Prevent concurrent popups — close any existing one first
+    if (activePopup && !activePopup.closed) {
+      activePopup.close();
+    }
+
     var width = 480;
     var height = 720;
     var left = Math.max(0, Math.floor((window.screen.width - width) / 2));
@@ -117,21 +131,34 @@ Fliplet.Widget.instance('login', function(data) {
     var loginUrl = buildLoginUrl('postmessage', origin);
     var apiOrigin = getApiOrigin();
     var pollClosed;
+    var handled = false;
 
     function cleanup() {
       window.removeEventListener('message', onMessage);
+
       if (pollClosed) {
         clearInterval(pollClosed);
         pollClosed = null;
       }
+
+      if (popupTimeout) {
+        clearTimeout(popupTimeout);
+        popupTimeout = null;
+      }
+
+      activePopup = null;
     }
 
     function onMessage(event) {
-      // Strict origin check — only accept messages from the API host
+      // Validate both origin and source — only accept messages from
+      // the popup we opened on the API host.
       if (event.origin !== apiOrigin) return;
+      if (event.source !== activePopup) return;
       if (!event.data || typeof event.data !== 'object') return;
+      if (handled) return;
 
       if (event.data.type === 'fliplet-login-success') {
+        handled = true;
         cleanup();
         handleAuthSuccess(event.data);
       } else if (event.data.type === 'fliplet-login-error') {
@@ -158,13 +185,23 @@ Fliplet.Widget.instance('login', function(data) {
       return;
     }
 
+    activePopup = popup;
     showLoadingState();
+
+    // Timeout: if the user abandons the popup without closing it
+    popupTimeout = setTimeout(function() {
+      if (activePopup && !activePopup.closed) {
+        activePopup.close();
+      }
+
+      cleanup();
+      hideLoadingState();
+      Fliplet.UI.Toast(T('widgets.login.fliplet.errors.unableLogin'));
+    }, POPUP_TIMEOUT_MS);
 
     pollClosed = setInterval(function() {
       if (popup.closed) {
         cleanup();
-        // Popup closed without completing — re-enable the button.
-        // No toast: closing the popup is a normal user action, not an error.
         hideLoadingState();
       }
     }, 500);
@@ -180,6 +217,7 @@ Fliplet.Widget.instance('login', function(data) {
   function openSignInIAB() {
     var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
     var loginUrl = buildLoginUrl('callback', null, callbackPrefix);
+    var iabHandled = false;
 
     showLoadingState();
 
@@ -188,11 +226,13 @@ Fliplet.Widget.instance('login', function(data) {
       inAppBrowser: true,
       onload: function(event) {
         if (!event || !event.url) return;
+        if (iabHandled) return;
 
         if (event.url.indexOf(callbackPrefix) === 0) {
           var qs = parseQueryString(event.url);
 
           if (qs.token) {
+            iabHandled = true;
             try {
               if (event.iab && typeof event.iab.close === 'function') {
                 event.iab.close();
