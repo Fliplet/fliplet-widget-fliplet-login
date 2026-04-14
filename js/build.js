@@ -7,6 +7,13 @@ Fliplet.Widget.instance('login', function(data) {
    */
   var LOGIN_FLAG_KEY = 'login_flag';
 
+  /**
+   * Fliplet.App.Storage key where the signed-in Fliplet user's details
+   * are persisted. Used as the source of truth for "is the user signed
+   * in to this app" on subsequent page loads.
+   */
+  var FLIPLET_LOGIN_STORAGE_KEY = 'fliplet_login_component';
+
   _this.$container = $(this);
   _this.data = data;
 
@@ -52,9 +59,8 @@ Fliplet.Widget.instance('login', function(data) {
 
   function getApiHost() {
     // Inside a published Fliplet app, Fliplet.Env.get('apiUrl') can return
-    // an apps-host-proxied URL (e.g. https://apps.fliplet.test/...) which
-    // doesn't serve the /v1/auth/* routes. primaryApiUrl is the canonical
-    // API host (e.g. https://api.fliplet.test/) — prefer it when available.
+    // an apps-host-proxied URL which doesn't serve the /v1/auth/* routes.
+    // primaryApiUrl is the canonical API host — prefer it when available.
     return Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl');
   }
 
@@ -62,8 +68,6 @@ Fliplet.Widget.instance('login', function(data) {
     try {
       return new URL(getApiHost()).origin;
     } catch (err) {
-      // Fallback: extract scheme + host manually in case URL() isn't
-      // available (older WebViews). Match up to the third slash.
       var host = getApiHost();
       var match = host.match(/^(https?:\/\/[^/]+)/);
 
@@ -71,20 +75,13 @@ Fliplet.Widget.instance('login', function(data) {
     }
   }
 
-  function getAppId() {
-    return Fliplet.Env.get('appId');
-  }
-
-  function buildLoginUrl(returnMode, origin, callback) {
-    var params = [];
-    params.push('return=' + encodeURIComponent(returnMode));
-    if (origin) params.push('origin=' + encodeURIComponent(origin));
-    if (callback) params.push('callback=' + encodeURIComponent(callback));
-    var appId = getAppId();
-    if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
-
+  function buildMobileLoginUrl(callback) {
     var apiHost = getApiHost();
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
+
+    var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
+    var appId = Fliplet.Env.get('appId');
+    if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
     return apiHost + 'v1/auth/login?' + params.join('&');
   }
@@ -109,114 +106,40 @@ Fliplet.Widget.instance('login', function(data) {
   // ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Open the unified sign-in page in a popup window (desktop / mobile web).
-   * The popup postMessages the auth token back to the opener on success;
-   * the widget listens for the message, then runs handleAuthSuccess.
+   * Web sign-in: delegate to the Fliplet.Auth SDK, which opens the unified
+   * sign-in page in a popup and handles the postMessage round-trip. On
+   * success resolves with { user, token }; on failure rejects with an
+   * Error (popup blocked, closed without completing, timed out, etc.).
    */
-  var activePopup = null;
-  var popupTimeout = null;
-  var POPUP_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-
   function openSignInPopup() {
-    // Prevent concurrent popups — close any existing one first
-    if (activePopup && !activePopup.closed) {
-      activePopup.close();
-    }
-
-    var width = 480;
-    var height = 720;
-    var left = Math.max(0, Math.floor((window.screen.width - width) / 2));
-    var top = Math.max(0, Math.floor((window.screen.height - height) / 2));
-    var origin = window.location.origin;
-    var loginUrl = buildLoginUrl('postmessage', origin);
-    var apiOrigin = getApiOrigin();
-    var pollClosed;
-    var handled = false;
-
-    function cleanup() {
-      window.removeEventListener('message', onMessage);
-
-      if (pollClosed) {
-        clearInterval(pollClosed);
-        pollClosed = null;
-      }
-
-      if (popupTimeout) {
-        clearTimeout(popupTimeout);
-        popupTimeout = null;
-      }
-
-      activePopup = null;
-    }
-
-    function onMessage(event) {
-      // Validate both origin and source — only accept messages from
-      // the popup we opened on the API host.
-      if (event.origin !== apiOrigin) return;
-      if (event.source !== activePopup) return;
-      if (!event.data || typeof event.data !== 'object') return;
-      if (handled) return;
-
-      if (event.data.type === 'fliplet-login-success') {
-        handled = true;
-        cleanup();
-        handleAuthSuccess(event.data);
-      } else if (event.data.type === 'fliplet-login-error') {
-        Fliplet.UI.Toast.error(event.data.message || T('widgets.login.fliplet.errors.unableLogin'));
-      }
-    }
-
-    // Register the listener BEFORE opening the popup to avoid a race
-    // where the popup loads instantly and postMessages before we're ready.
-    window.addEventListener('message', onMessage);
-
-    var popup = window.open(
-      loginUrl,
-      'fliplet-login',
-      'width=' + width + ',height=' + height
-        + ',top=' + top + ',left=' + left
-        + ',resizable=yes,scrollbars=yes,menubar=no,toolbar=no'
-    );
-
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      cleanup();
-      Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.popupBlocked'));
-      hideLoadingState();
-      return;
-    }
-
-    activePopup = popup;
     showLoadingState();
 
-    // Timeout: if the user abandons the popup without closing it
-    popupTimeout = setTimeout(function() {
-      if (activePopup && !activePopup.closed) {
-        activePopup.close();
-      }
-
-      cleanup();
+    Fliplet.Auth.signIn().then(function(result) {
+      handleAuthSuccess({ token: result.token, user: result.user });
+    }).catch(function(err) {
       hideLoadingState();
-      Fliplet.UI.Toast(T('widgets.login.fliplet.errors.unableLogin'));
-    }, POPUP_TIMEOUT_MS);
 
-    pollClosed = setInterval(function() {
-      if (popup.closed) {
-        cleanup();
-        hideLoadingState();
+      var message = (err && err.message) || T('widgets.login.fliplet.errors.unableLogin');
+
+      // Don't toast for user-initiated cancellations (popup closed).
+      if (/cancelled|closed/i.test(message)) {
+        return;
       }
-    }, 500);
+
+      Fliplet.UI.Toast.error(message);
+    });
   }
 
   /**
-   * Open the unified sign-in page in an InAppBrowser (Cordova native).
-   * Pass the API's /v1/auth/return-token sentinel as the callback URL —
-   * the same contract the CLI and VS Code extension use, just with a
-   * Fliplet-controlled URL instead of localhost / vscode://. We intercept
-   * the navigation to that URL, capture the token, and close the IAB.
+   * Cordova native sign-in: open the unified sign-in page in an
+   * InAppBrowser. postMessage isn't usable between the app WebView and
+   * the IAB, so we use a sentinel callback URL (the API's own
+   * /v1/auth/return-token) and intercept the IAB navigation to capture
+   * the auth result. Same contract the CLI / VSCode extension use.
    */
   function openSignInIAB() {
     var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
-    var loginUrl = buildLoginUrl('callback', null, callbackPrefix);
+    var loginUrl = buildMobileLoginUrl(callbackPrefix);
     var iabHandled = false;
 
     showLoadingState();
@@ -255,19 +178,19 @@ Fliplet.Widget.instance('login', function(data) {
       },
       onclose: function() {
         // User closed the IAB before completing — re-enable the button.
-        // No toast: cancelling is a normal action.
         hideLoadingState();
       }
     });
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // Convergence point: both desktop and mobile flows call this with
-  // { token, user }. Reuses the existing post-login glue verbatim.
+  // Convergence point: web and native flows both call this with
+  // { token, user }. Runs the login hook, validates the account,
+  // sets the app-list flag, and navigates to the configured next page.
   // ──────────────────────────────────────────────────────────────────────
 
-  function handleAuthSuccess(data) {
-    if (!data || !data.token || !data.user) {
+  function handleAuthSuccess(authResult) {
+    if (!authResult || !authResult.token || !authResult.user) {
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
       return;
@@ -275,42 +198,36 @@ Fliplet.Widget.instance('login', function(data) {
 
     showLoadingState();
 
-    // Mirror what Fliplet.Session.run()'s storeSession did in the old
-    // same-window login: set window.ENV.user.auth_token so that any
-    // subsequent API calls on this page (including the one made by
-    // Fliplet.Login.validateAccount below) authenticate as the signed-in
-    // user, not as the app's bootstrap appToken.
-    Fliplet.User.setAuthToken(data.token);
-
+    // Note: Fliplet.Auth.signIn() already writes fliplet_login_component
+    // and calls setAuthToken. The updateUserStorage call below is kept
+    // for backwards compatibility with any consumer that reads a field
+    // the SDK doesn't write.
     return Fliplet.Login.updateUserStorage({
-      id: data.user.id,
-      region: data.token.substr(0, 2),
-      userRoleId: data.user.userRoleId,
-      authToken: data.token,
-      email: data.user.email,
-      legacy: data.user.legacy
+      id: authResult.user.id,
+      region: authResult.token.substr(0, 2),
+      userRoleId: authResult.user.userRoleId,
+      authToken: authResult.token,
+      email: authResult.user.email,
+      legacy: authResult.user.legacy
     }).then(function() {
       return Fliplet.Hooks.run('login', {
         passport: 'fliplet',
-        userProfile: data.user
+        userProfile: authResult.user
       });
     }).then(function() {
-      return Fliplet.Login.validateAccount({ data: data });
+      return Fliplet.Login.validateAccount({ data: authResult });
     }).then(function() {
       Fliplet.Analytics.trackEvent({
         category: 'login_fliplet',
         action: 'login_pass'
       });
 
-      // Set the login flag so the App List component knows the user
-      // arrived from the login screen.
       return Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
     }).then(function() {
       // Reset the button state BEFORE attempting navigation. When the
       // navigation succeeds, the widget unmounts and the reset is a no-op.
       // When `disableSecurity` is true (preview / dev mode), navigation
-      // is intentionally skipped — without this reset, the button would
-      // be stuck on "Waiting for sign-in…" forever.
+      // is intentionally skipped.
       hideLoadingState();
 
       if (Fliplet.Env.get('disableSecurity')) {
@@ -360,22 +277,19 @@ Fliplet.Widget.instance('login', function(data) {
   // Already-signed-in detection: skip the button entirely if a Fliplet
   // user session is already stored locally for this app.
   //
-  // Unlike the old master implementation, this intentionally does NOT use
-  // Fliplet.User.getCachedSession(). On a full page reload, Fliplet
-  // bootstrap calls /v1/session with the server-injected appToken bearer
-  // and overwrites the cached session with the appToken's session — so
-  // getCachedSession() always reports `user.type === 'appToken'` on
-  // subsequent loads, regardless of whether the user is logged in.
+  // Reads from the Fliplet.App.Storage entry that Fliplet.Login.updateUserStorage
+  // (and Fliplet.Auth.signIn) writes after a successful sign-in. This is
+  // the same pattern core.js uses in getOrganizations and similar call
+  // sites — `fliplet_login_component.auth_token` is the source of truth
+  // for "this user is signed in to the app" and persists across page
+  // reloads (App.Storage is durable per-app).
   //
-  // Instead we read directly from the Fliplet.App.Storage entry that
-  // `Fliplet.Login.updateUserStorage()` writes after a successful sign-in.
-  // This is the same pattern core.js already uses in `getOrganizations`
-  // and similar call sites — `fliplet_login_component.auth_token` is the
-  // source of truth for "this user is signed in to the app" and persists
-  // across page reloads (App.Storage is durable per-app).
+  // Intentionally does NOT use Fliplet.User.getCachedSession(). On a full
+  // page reload, Fliplet bootstrap calls /v1/session with the server-injected
+  // appToken bearer and overwrites the cached session with the appToken's
+  // session — so getCachedSession() always reports `user.type === 'appToken'`
+  // on subsequent loads, regardless of whether the user is signed in.
   // ──────────────────────────────────────────────────────────────────────
-
-  var FLIPLET_LOGIN_STORAGE_KEY = 'fliplet_login_component';
 
   function initSession() {
     Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY)
@@ -442,7 +356,6 @@ Fliplet.Widget.instance('login', function(data) {
       initSession();
 
       if (Fliplet.Env.get('interact')) {
-        // Disable the button in edit mode to prevent accidental clicks
         _this.$container.find('.fliplet-login-button').prop('disabled', true);
       }
 

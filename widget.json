@@ -1,7 +1,7 @@
 {
   "name": "Fliplet Login",
   "package": "com.fliplet.login",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "icon": "img/icon.png",
   "tags": ["type:component", "category:security"],
   "provider_only": false,
@@ -24,6 +24,7 @@
   "build": {
     "dependencies": [
       "fliplet-core",
+      "fliplet-auth",
       "bootstrap",
       "lodash",
       "fliplet-security",
