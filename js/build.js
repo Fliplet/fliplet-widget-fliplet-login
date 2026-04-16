@@ -124,18 +124,35 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   /**
-   * Detects whether the widget is running inside an iframe. Studio preview
-   * embeds the app in an iframe and the auth-loader refuses framing via
-   * X-Frame-Options, so we fall back to the popup flow in any iframed
-   * context. Cross-origin iframes throw on `window.top` access; treat the
+   * Detects whether the widget is running in a Studio editor, Studio
+   * preview, or V3 app preview context — anywhere the auth-loader
+   * shouldn't be loaded via a top-level redirect.
+   *
+   * Studio signals are the primary discriminator:
+   *   - interact: true                   → Studio edit mode
+   *   - mode === 'interact' | 'preview'  → Studio (legacy / non-V3)
+   *   - preview: true                    → V3 app preview
+   *
+   * Iframe detection is a final safety net: any other embedding
+   * context would hit X-Frame-Options on the auth-loader anyway.
+   * Cross-origin iframes throw on `window.top` access; treat the
    * throw as "yes, we're iframed".
    */
-  function isInsideIframe() {
+  function isStudioOrPreviewContext() {
+    if (Fliplet.Env.get('interact')) return true;
+    if (Fliplet.Env.get('preview')) return true;
+
+    var mode = Fliplet.Env.get('mode');
+
+    if (mode === 'interact' || mode === 'preview') return true;
+
     try {
-      return window.self !== window.top;
+      if (window.self !== window.top) return true;
     } catch (err) {
       return true;
     }
+
+    return false;
   }
 
   function parseQueryString(url) {
@@ -444,14 +461,14 @@ Fliplet.Widget.instance('login', function(data) {
       _this.$container.find('.login-error-holder').removeClass('show').empty();
 
       var isWeb = Fliplet.Env.get('platform') === 'web';
-      var isEmbeddedInStudio = Fliplet.Env.get('interact') || isInsideIframe();
 
-      if (isWeb && !isEmbeddedInStudio) {
+      if (isWeb && !isStudioOrPreviewContext()) {
         openSignInSameTab();
       } else if (isWeb) {
-        // Studio preview / interact / any iframed context: same-tab would
-        // hijack the parent iframe and the auth-loader refuses framing
-        // via X-Frame-Options. Fall back to the popup flow.
+        // Studio preview / interact / V3 app preview / any iframed
+        // context: same-tab would hijack the parent iframe and the
+        // auth-loader refuses framing via X-Frame-Options. Fall back
+        // to the popup flow.
         openSignInPopup();
       } else {
         openSignInIAB();
