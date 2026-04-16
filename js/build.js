@@ -75,7 +75,7 @@ Fliplet.Widget.instance('login', function(data) {
     }
   }
 
-  function buildMobileLoginUrl(callback) {
+  function buildCallbackLoginUrl(callback) {
     var apiHost = getApiHost();
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
 
@@ -84,6 +84,43 @@ Fliplet.Widget.instance('login', function(data) {
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
     return apiHost + 'v1/auth/login?' + params.join('&');
+  }
+
+  /**
+   * Returns the current page URL with any auth-return sentinel params
+   * (token / user / error) stripped, so repeat sign-ins don't accumulate
+   * stale params in the callback URL. Uses the URL API — fine for web
+   * where same-tab mode applies (all modern web browsers).
+   */
+  function buildSameTabCallbackUrl() {
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('token');
+      url.searchParams.delete('user');
+      url.searchParams.delete('error');
+
+      return url.toString();
+    } catch (err) {
+      return window.location.href;
+    }
+  }
+
+  /**
+   * Strips the auth-return params from the URL in place so the token
+   * doesn't persist in the address bar / history / bookmarks.
+   */
+  function cleanAuthReturnParamsFromUrl() {
+    if (!window.history || !window.history.replaceState) return;
+
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('token');
+      url.searchParams.delete('user');
+      url.searchParams.delete('error');
+      window.history.replaceState({}, document.title, url.toString());
+    } catch (err) {
+      console.warn('[Fliplet.Login] failed to clean auth params from URL:', err);
+    }
   }
 
   function parseQueryString(url) {
@@ -131,6 +168,52 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   /**
+   * Web same-tab sign-in: navigate the current tab to the unified
+   * sign-in page with a callback URL that points back to this page.
+   * The auth-loader does a top-level redirect back with token + user
+   * in the query string; handleSameTabReturn() picks them up on the
+   * next page load.
+   *
+   * Used only when the app is actually being viewed as a deployed web
+   * app — Studio interact mode keeps the popup to avoid hijacking the
+   * editor iframe.
+   */
+  function openSignInSameTab() {
+    showLoadingState();
+
+    var loginUrl = buildCallbackLoginUrl(buildSameTabCallbackUrl());
+
+    window.location.assign(loginUrl);
+  }
+
+  /**
+   * Runs on widget mount. If the current URL has token + user query
+   * params, we're on the return leg of a same-tab sign-in — extract
+   * them, clean the URL, and feed the result into handleAuthSuccess.
+   * Returns true if the return was handled so the caller can skip the
+   * normal session-restore path.
+   */
+  function handleSameTabReturn() {
+    var q = Fliplet.Navigate.query;
+
+    if (!q || !q.token) return false;
+
+    var user = null;
+
+    try {
+      user = JSON.parse(q.user || 'null');
+    } catch (err) {
+      console.warn('[Fliplet.Login] failed to parse user from same-tab return:', err);
+    }
+
+    cleanAuthReturnParamsFromUrl();
+
+    handleAuthSuccess({ token: q.token, user: user });
+
+    return true;
+  }
+
+  /**
    * Cordova native sign-in: open the unified sign-in page in an
    * InAppBrowser. postMessage isn't usable between the app WebView and
    * the IAB, so we use a sentinel callback URL (the API's own
@@ -139,7 +222,7 @@ Fliplet.Widget.instance('login', function(data) {
    */
   function openSignInIAB() {
     var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
-    var loginUrl = buildMobileLoginUrl(callbackPrefix);
+    var loginUrl = buildCallbackLoginUrl(callbackPrefix);
     var iabHandled = false;
 
     showLoadingState();
@@ -345,7 +428,11 @@ Fliplet.Widget.instance('login', function(data) {
     _this.$container.find('.fliplet-login-button').on('click', function() {
       _this.$container.find('.login-error-holder').removeClass('show').empty();
 
-      if (Fliplet.Env.get('platform') === 'web') {
+      if (Fliplet.Env.get('platform') === 'web' && !Fliplet.Env.get('interact')) {
+        openSignInSameTab();
+      } else if (Fliplet.Env.get('platform') === 'web') {
+        // Studio interact mode: the button is normally disabled below,
+        // but keep the popup flow as a defensive fallback.
         openSignInPopup();
       } else {
         openSignInIAB();
@@ -353,6 +440,13 @@ Fliplet.Widget.instance('login', function(data) {
     });
 
     if (Fliplet.Env.get('platform') === 'web') {
+      // Same-tab return leg: the auth-loader redirected back with
+      // token + user in the query string. Process it before falling
+      // through to the normal session restore.
+      if (handleSameTabReturn()) {
+        return;
+      }
+
       initSession();
 
       if (Fliplet.Env.get('interact')) {
