@@ -123,6 +123,21 @@ Fliplet.Widget.instance('login', function(data) {
     }
   }
 
+  /**
+   * Detects whether the widget is running inside an iframe. Studio preview
+   * embeds the app in an iframe and the auth-loader refuses framing via
+   * X-Frame-Options, so we fall back to the popup flow in any iframed
+   * context. Cross-origin iframes throw on `window.top` access; treat the
+   * throw as "yes, we're iframed".
+   */
+  function isInsideIframe() {
+    try {
+      return window.self !== window.top;
+    } catch (err) {
+      return true;
+    }
+  }
+
   function parseQueryString(url) {
     var query = (url.split('?')[1] || '').split('#')[0];
     var pairs = query.split('&');
@@ -428,11 +443,15 @@ Fliplet.Widget.instance('login', function(data) {
     _this.$container.find('.fliplet-login-button').on('click', function() {
       _this.$container.find('.login-error-holder').removeClass('show').empty();
 
-      if (Fliplet.Env.get('platform') === 'web' && !Fliplet.Env.get('interact')) {
+      var isWeb = Fliplet.Env.get('platform') === 'web';
+      var isEmbeddedInStudio = Fliplet.Env.get('interact') || isInsideIframe();
+
+      if (isWeb && !isEmbeddedInStudio) {
         openSignInSameTab();
-      } else if (Fliplet.Env.get('platform') === 'web') {
-        // Studio interact mode: the button is normally disabled below,
-        // but keep the popup flow as a defensive fallback.
+      } else if (isWeb) {
+        // Studio preview / interact / any iframed context: same-tab would
+        // hijack the parent iframe and the auth-loader refuses framing
+        // via X-Frame-Options. Fall back to the popup flow.
         openSignInPopup();
       } else {
         openSignInIAB();
