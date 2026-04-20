@@ -153,14 +153,16 @@ Fliplet.Widget.instance('login', function(data) {
                       return reject(T('widgets.login.fliplet.errors.loginNotFinished'));
                     }
 
-                    // Update stored email address based on retrieved session
-                    Fliplet.Login.updateUserStorage({
-                      id: session.user.id,
-                      region: session.auth_token.substr(0, 2),
-                      userRoleId: session.user.userRoleId,
-                      authToken: user.auth_token,
-                      email: session.user.email,
-                      legacy: session.legacy
+                    return Fliplet.Login.verifyUserForDevEnvApp(user).then(function() {
+                      // Update stored email address based on retrieved session
+                      return Fliplet.Login.updateUserStorage({
+                        id: session.user.id,
+                        region: session.auth_token.substr(0, 2),
+                        userRoleId: session.user.userRoleId,
+                        authToken: user.auth_token,
+                        email: session.user.email,
+                        legacy: session.legacy
+                      });
                     }).then(function() {
                       return Fliplet.Hooks.run('login', {
                         passport: 'fliplet',
@@ -168,7 +170,7 @@ Fliplet.Widget.instance('login', function(data) {
                       });
                     }).then(function() {
                       return Fliplet.Login.validateAccount().then(resolve).catch(reject);
-                    });
+                    }).catch(reject);
                   });
                 }
               }).then(function() {
@@ -623,18 +625,20 @@ Fliplet.Widget.instance('login', function(data) {
           return Promise.reject('Login failed. Please try again later.');
         }
 
-        Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
+        return Fliplet.Login.verifyUserForDevEnvApp(user).then(function() {
+          Fliplet.Storage.set(LOGIN_FLAG_KEY, true);
 
-        // Add organization data to response
-        return Fliplet.API.request({
-          url: 'v1/organizations',
-          headers: {
-            'Auth-token': user.auth_token
-          }
-        }).then(function(data) {
-          _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
+          // Add organization data to response
+          return Fliplet.API.request({
+            url: 'v1/organizations',
+            headers: {
+              'Auth-token': user.auth_token
+            }
+          }).then(function(data) {
+            _.set(response, 'userOrganizations', _.get(data, 'organizations', []));
 
-          return response;
+            return response;
+          });
         });
       });
     }

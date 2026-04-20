@@ -3,8 +3,17 @@
 
   Fliplet.Login = (function() {
     var ORG_ADMIN_ROLE_ID = 1;
+    var FLIPLET_ADMIN_ROLE_ID = 1;
     var storageName = 'fliplet_login_component';
     var skipSetupStorageName = 'skipFlipletAccountSetup';
+
+    // Master app and production app IDs for the deployed Dev Environment Dashboards.
+    // Kept in sync with the map in js/build.js — update both when adding a new env.
+    var DEV_ENVIRONMENT_APPS = {
+      'https://env.fliplet.com/': [436446, 436447],
+      'https://staging-apps.fliplet.com/': [511849, 511850],
+      'https://apps.fliplet.test/': [11, 12]
+    };
 
     /**
      * Creates user profile data
@@ -90,6 +99,28 @@
 
           return response;
         });
+      });
+    }
+
+    /**
+     * Verify that the given user is allowed to access the current app when it
+     * is a Dev Environment Dashboard (Fliplet Admins only). Logs the user out
+     * and rejects on failure; resolves silently otherwise.
+     * @param {Object} user - User object exposing userRoleId
+     * @returns {Promise} Resolves if allowed, rejects with i18n error if not
+     */
+    function verifyUserForDevEnvApp(user) {
+      var allowedAppIds = DEV_ENVIRONMENT_APPS[Fliplet.Env.get('appsUrl')];
+      var isDevEnvApp = Array.isArray(allowedAppIds)
+        && allowedAppIds.indexOf(Fliplet.Env.get('appId')) !== -1;
+
+      if (!isDevEnvApp || !user || user.userRoleId === FLIPLET_ADMIN_ROLE_ID) {
+        return Promise.resolve();
+      }
+
+      // Tear down the session so the user isn't left authenticated-but-blocked
+      return Fliplet.Session.logout().catch(function() {}).then(function() {
+        return Promise.reject(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
       });
     }
 
@@ -195,6 +226,10 @@
       }
 
       return getData.then(function(response) {
+        return verifyUserForDevEnvApp(_.get(response, 'user')).then(function() {
+          return response;
+        });
+      }).then(function(response) {
         return userMustSetupAccount(response).then(function(setupRequired) {
           if (setupRequired) {
             return goToAccountSetup();
@@ -217,6 +252,7 @@
     return {
       updateUserStorage: updateUserStorage,
       validateAccount: validateAccount,
+      verifyUserForDevEnvApp: verifyUserForDevEnvApp,
       setSkipSetupStorage: setSkipSetupStorage
     };
   }());
