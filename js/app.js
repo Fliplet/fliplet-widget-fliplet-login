@@ -118,7 +118,9 @@
       }
 
       // Tear down the session so the user isn't left authenticated-but-blocked
-      return Fliplet.Session.logout().catch(function() {}).then(function() {
+      return Fliplet.Session.logout().catch(function(err) {
+        console.warn('[verifyUserForDevEnvApp] Failed to log out blocked user:', err);
+      }).then(function() {
         return Promise.reject(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
       });
     }
