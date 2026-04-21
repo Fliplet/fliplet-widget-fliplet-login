@@ -121,6 +121,18 @@
       return Fliplet.Session.logout().catch(function(err) {
         console.warn('[verifyUserForDevEnvApp] Failed to log out blocked user:', err);
       }).then(function() {
+        // Belt-and-suspenders: clear local client state even if the server
+        // logout failed, so no partially-authenticated footprint remains for
+        // other widgets (Fliplet.Profile, app storage) to read.
+        return Promise.all([
+          Fliplet.App.Storage.remove(storageName).catch(function(err) {
+            console.warn('[verifyUserForDevEnvApp] Failed to clear app storage:', err);
+          }),
+          Fliplet.Profile.remove(['email', 'user']).catch(function(err) {
+            console.warn('[verifyUserForDevEnvApp] Failed to clear profile:', err);
+          })
+        ]);
+      }).then(function() {
         var error = new Error(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
 
         error.code = 'USER_NOT_FLIPLET_ADMIN';
