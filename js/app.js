@@ -2,8 +2,8 @@
   var Fliplet = window.Fliplet || {};
 
   Fliplet.Login = (function() {
-    var ORG_ADMIN_ROLE_ID = 1;
-    var FLIPLET_ADMIN_ROLE_ID = 1;
+    var ORG_ADMIN_ROLE_ID = 1; // This role ID is assigned to Fliplet Studio user who is an organization admin
+    var FLIPLET_ADMIN_ROLE_ID = 1; // This is user role ID which is only assigned to Fliplet Staff
     var storageName = 'fliplet_login_component';
     var skipSetupStorageName = 'skipFlipletAccountSetup';
 
@@ -121,7 +121,11 @@
       return Fliplet.Session.logout().catch(function(err) {
         console.warn('[verifyUserForDevEnvApp] Failed to log out blocked user:', err);
       }).then(function() {
-        return Promise.reject(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
+        var error = new Error(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
+
+        error.code = 'USER_NOT_FLIPLET_ADMIN';
+
+        return Promise.reject(error);
       });
     }
 
@@ -264,7 +268,15 @@
     key: cacheKey,
     expire: 60 * 60 * 12 // Keep cache for half a day
   }, function onFetchData() {
-    return Fliplet.Login.validateAccount();
+    return Fliplet.Login.validateAccount().catch(function(error) {
+      // Surface the admin-gate rejection to the user on boot — unlike the
+      // login-time paths, this one has no UI handler upstream.
+      if (error && error.code === 'USER_NOT_FLIPLET_ADMIN') {
+        Fliplet.UI.Toast.error(error, { message: error.message });
+      }
+
+      return Promise.reject(error);
+    });
   });
 
   Fliplet.Hooks.on('login', function(data) {
