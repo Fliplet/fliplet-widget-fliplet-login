@@ -153,7 +153,7 @@ Fliplet.Widget.instance('login', function(data) {
                       return reject(T('widgets.login.fliplet.errors.loginNotFinished'));
                     }
 
-                    return Fliplet.Login.verifyUserForDevEnvApp(user).then(function() {
+                    return Fliplet.Login.verifyUserForDevEnvApp(session.user).then(function() {
                       // Update stored email address based on retrieved session
                       return Fliplet.Login.updateUserStorage({
                         id: session.user.id,

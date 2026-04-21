@@ -8,7 +8,6 @@
     var skipSetupStorageName = 'skipFlipletAccountSetup';
 
     // Master app and production app IDs for the deployed Dev Environment Dashboards.
-    // Kept in sync with the map in js/build.js — update both when adding a new env.
     var DEV_ENVIRONMENT_APPS = {
       'https://env.fliplet.com/': [436446, 436447],
       'https://staging-apps.fliplet.com/': [511849, 511850],
