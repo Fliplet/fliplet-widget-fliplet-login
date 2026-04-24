@@ -2,9 +2,17 @@
   var Fliplet = window.Fliplet || {};
 
   Fliplet.Login = (function() {
-    var ORG_ADMIN_ROLE_ID = 1;
+    var ORG_ADMIN_ROLE_ID = 1; // This role ID is assigned to Fliplet Studio user who is an organization admin
+    var FLIPLET_ADMIN_ROLE_ID = 1; // This is user role ID which is only assigned to Fliplet Staff
     var storageName = 'fliplet_login_component';
     var skipSetupStorageName = 'skipFlipletAccountSetup';
+
+    // Master app and production app IDs for the deployed Dev Environment Dashboards.
+    var DEV_ENVIRONMENT_APPS = {
+      'https://env.fliplet.com/': [436446, 436447],
+      'https://staging-apps.fliplet.com/': [511849, 511850],
+      'https://apps.fliplet.test/': [11, 12]
+    };
 
     /**
      * Creates user profile data
@@ -90,6 +98,46 @@
 
           return response;
         });
+      });
+    }
+
+    /**
+     * Verify that the given user is allowed to access the current app when it
+     * is a Dev Environment Dashboard (Fliplet Admins only). Logs the user out
+     * and rejects on failure; resolves silently otherwise.
+     * @param {Object} user - User object exposing userRoleId
+     * @returns {Promise} Resolves if allowed, rejects with i18n error if not
+     */
+    function verifyUserForDevEnvApp(user) {
+      var allowedAppIds = DEV_ENVIRONMENT_APPS[Fliplet.Env.get('appsUrl')];
+      var isDevEnvApp = Array.isArray(allowedAppIds)
+        && allowedAppIds.indexOf(Fliplet.Env.get('appId')) !== -1;
+
+      if (!isDevEnvApp || !user || user.userRoleId === FLIPLET_ADMIN_ROLE_ID) {
+        return Promise.resolve();
+      }
+
+      // Tear down the session so the user isn't left authenticated-but-blocked
+      return Fliplet.Session.logout().catch(function(err) {
+        console.warn('[verifyUserForDevEnvApp] Failed to log out blocked user:', err);
+      }).then(function() {
+        // Belt-and-suspenders: clear local client state even if the server
+        // logout failed, so no partially-authenticated footprint remains for
+        // other widgets (Fliplet.Profile, app storage) to read.
+        return Promise.all([
+          Fliplet.App.Storage.remove(storageName).catch(function(err) {
+            console.warn('[verifyUserForDevEnvApp] Failed to clear app storage:', err);
+          }),
+          Fliplet.Profile.remove(['email', 'user']).catch(function(err) {
+            console.warn('[verifyUserForDevEnvApp] Failed to clear profile:', err);
+          })
+        ]);
+      }).then(function() {
+        var error = new Error(T('widgets.login.fliplet.errors.userNotAFlipletAdmin'));
+
+        error.code = 'USER_NOT_FLIPLET_ADMIN';
+
+        return Promise.reject(error);
       });
     }
 
@@ -195,6 +243,10 @@
       }
 
       return getData.then(function(response) {
+        return verifyUserForDevEnvApp(_.get(response, 'user')).then(function() {
+          return response;
+        });
+      }).then(function(response) {
         return userMustSetupAccount(response).then(function(setupRequired) {
           if (setupRequired) {
             return goToAccountSetup();
@@ -217,6 +269,7 @@
     return {
       updateUserStorage: updateUserStorage,
       validateAccount: validateAccount,
+      verifyUserForDevEnvApp: verifyUserForDevEnvApp,
       setSkipSetupStorage: setSkipSetupStorage
     };
   }());
@@ -227,7 +280,15 @@
     key: cacheKey,
     expire: 60 * 60 * 12 // Keep cache for half a day
   }, function onFetchData() {
-    return Fliplet.Login.validateAccount();
+    return Fliplet.Login.validateAccount().catch(function(error) {
+      // Surface the admin-gate rejection to the user on boot — unlike the
+      // login-time paths, this one has no UI handler upstream.
+      if (error && error.code === 'USER_NOT_FLIPLET_ADMIN') {
+        Fliplet.UI.Toast.error(error, { message: error.message });
+      }
+
+      return Promise.reject(error);
+    });
   });
 
   Fliplet.Hooks.on('login', function(data) {
