@@ -91,7 +91,8 @@
           "loginNotFinished": "You didn't finish the login process.",
           "loginFailed": "Login failed. Please try again later.",
           "sessionNotFound": "Login session not found",
-          "unableLogin": "Unable to login. Try again later."
+          "unableLogin": "Unable to login. Try again later.",
+          "userNotAFlipletAdmin": "Only Fliplet Admins can access this app."
         },
         "warnings": {
           "noRedirectWithoutSecurity": "Login verified. Redirection is disabled when security isn't enabled.",
