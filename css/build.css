@@ -1,200 +1,142 @@
-/* Buttons */
+/* Fliplet Login widget — popup-flow rebuild */
+
 .login-form-holder {
-	display: none;
+  display: none;
 }
 
 .login-form-holder h2,
-.login-form-holder h3,
 .login-form-holder p {
-	text-align: center;
+  text-align: center;
 }
 
 .login-form-holder p {
-	opacity: 0.7;
+  opacity: 0.7;
 }
 
-.login-form-holder .form-group label {
-  font-weight: normal;
-  font-size: 0.8em;
+/* Sign-in button — replaces the inline form */
+.fliplet-login-button-wrapper {
+  text-align: center;
 }
 
-input.form-control {
-	border: 1px solid #e5e5e5;
-	border-radius: 6px;
-	-webkit-box-shadow: none;
-	box-shadow: none;
-	-webkit-appearance: none;
-}
-
-input.form-control:focus {
-	border: 1px solid #337ab7;
-	-webkit-box-shadow: none;
-	box-shadow: none;
-}
-
-.fliplet-new-password .form-control + .form-control {
-	margin-top: 10px;
-}
-
-.login-button-holder {
-	text-align: center;
-}
-
-.btn-fliplet-login,
-.btn-continue,
-.btn-login-back {
-  clear: both;
-  width: 100%;
-  min-width: 45%;
-  padding: 10px 16px;
+.fliplet-login-button {
+  display: inline-block;
+  margin-top: 20px;
+  min-width: 200px;
+  padding: 10px 24px;
   font-size: 18px;
   line-height: 24px;
   border: none;
-  text-align: center;
-  cursor: pointer;
   border-radius: 6px;
+  cursor: pointer;
 }
 
-.btn-continue {
-  display: block;
-}
-
-[data-auth-type] .btn-fliplet-login,
-[data-auth-type] .btn-login-back,
-[data-auth-type] .btn-forgot-pass,
-[data-auth-type] .password {
-  display: none;
-}
-
-.login-form-holder .btn:focus,
-.login-form-holder .btn:hover,
-.login-form-holder .btn:active:focus {
+.fliplet-login-button:focus,
+.fliplet-login-button:hover,
+.fliplet-login-button:active:focus {
   outline: none;
 }
 
-[data-auth-type="password"] .btn-fliplet-login,
-[data-auth-type="password"] .btn-forgot-pass,
-[data-auth-type="password"] .btn-login-back,
-[data-auth-type="password"] .password {
-  display: block;
-}
-
-[data-auth-type="password"] .btn-continue {
-  display: none;
-}
-
-@media (min-width:640px) {
-	.btn-fliplet-login,
-  .btn-login-back,
-  .btn-continue {
-		clear: none;
-		display: inline-block;
-		width: auto;
-		max-width: 100%;
-	}
-}
-
-.login-offline .btn-fliplet-login {
-	background-color: #d6d6d6;
-	pointer-events: none;
-}
-
-.btn.disabled {
-  opacity: 0.5;
+.fliplet-login-button.loading,
+.fliplet-login-button[disabled] {
+  opacity: 0.6;
   pointer-events: none;
 }
 
+.login-offline .fliplet-login-button {
+  background-color: #d6d6d6;
+  pointer-events: none;
+}
+
+/* Error / offline messages */
 .login-error-holder {
-	margin-top: 1em;
-	color: #b10000;
-	display: none;
+  margin-top: 1em;
+  color: #b10000;
+  display: none;
+}
+
+.login-error-holder.show {
+  display: block;
 }
 
 .login-error-holder p {
-	margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .login-offline-notification {
-	text-align: center;
-	color: #fff;
-	background-color: #b10000;
-	display: none;
+  text-align: center;
+  color: #fff;
+  background-color: #b10000;
+  display: none;
 }
 
 .login-offline .login-offline-notification {
-	display: block;
+  display: block;
 }
+
 /* LOADER */
 .login-loader-holder {
-	overflow: hidden;
+  overflow: hidden;
 }
 
 .loader {
-	display: none;
+  display: none;
 }
 
 .login-loader-holder.animated .loader {
-	display: block;
+  display: block;
 }
 
 .loader,
 .loader:after {
-	border-radius: 50%;
-	width: 10em;
-	height: 10em;
+  border-radius: 50%;
+  width: 10em;
+  height: 10em;
 }
 
 .loader {
-	margin: 2px auto;
-	font-size: 2px;
-	position: relative;
-	text-indent: -9999em;
-	border-top: 1.1em solid rgba(138, 138, 138, 0.2);
-	border-right: 1.1em solid rgba(138, 138, 138, 0.2);
-	border-bottom: 1.1em solid rgba(138, 138, 138, 0.2);
-	border-left: 1.1em solid #333;
-	-webkit-transform: translateZ(0);
-	-ms-transform: translateZ(0);
-	transform: translateZ(0);
-	-webkit-animation: load8 1.1s infinite linear;
-	animation: load8 1.1s infinite linear;
-}
-
-.fl-two-auth {
+  margin: 2px auto;
+  font-size: 2px;
   position: relative;
-}
-
-.fl-two-auth input {
-  padding-left: 50px;
+  text-indent: -9999em;
+  border-top: 1.1em solid rgba(138, 138, 138, 0.2);
+  border-right: 1.1em solid rgba(138, 138, 138, 0.2);
+  border-bottom: 1.1em solid rgba(138, 138, 138, 0.2);
+  border-left: 1.1em solid #333;
+  -webkit-transform: translateZ(0);
+  -ms-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-animation: load8 1.1s infinite linear;
+  animation: load8 1.1s infinite linear;
 }
 
 @-webkit-keyframes load8 {
-	0% {
-		-webkit-transform: rotate(0deg);
-		transform: rotate(0deg);
-	}
+  0% {
+    -webkit-transform: rotate(0deg);
+    transform: rotate(0deg);
+  }
 
-	100% {
-		-webkit-transform: rotate(360deg);
-		transform: rotate(360deg);
-	}
+  100% {
+    -webkit-transform: rotate(360deg);
+    transform: rotate(360deg);
+  }
 }
+
 @keyframes load8 {
-	0% {
-		-webkit-transform: rotate(0deg);
-		transform: rotate(0deg);
-	}
+  0% {
+    -webkit-transform: rotate(0deg);
+    transform: rotate(0deg);
+  }
 
-	100% {
-		-webkit-transform: rotate(360deg);
-		transform: rotate(360deg);
-	}
+  100% {
+    -webkit-transform: rotate(360deg);
+    transform: rotate(360deg);
+  }
 }
-/* @MEDIA QUERY */
+
 @media screen and (min-width: 640px) {
-	.container-fluid {
-		padding: 0 12.5%;
-	}
+  .container-fluid {
+    padding: 0 12.5%;
+  }
 }
 
 /* Fix component view when it is placed in the container */
