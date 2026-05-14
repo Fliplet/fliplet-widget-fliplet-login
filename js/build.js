@@ -96,6 +96,16 @@ Fliplet.Widget.instance('login', function(data) {
     var appId = Fliplet.Env.get('appId');
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
+    // Hide the Google/Apple/Microsoft buttons when we're going to land
+    // in Cordova's InAppBrowser — Google rejects OAuth from embedded
+    // WebViews (Error 403: disallowed_useragent, "Use secure browsers"
+    // policy) and Apple is similar. Email/password and SAML2 still
+    // work in the IAB so we keep those. Tracked for proper fix in
+    // DEV-1209 (SFSafariViewController / Chrome Custom Tabs path).
+    if (Fliplet.Env.get('platform') !== 'web') {
+      params.push('hideSocialSso=1');
+    }
+
     return apiHost + 'v1/auth/login?' + params.join('&');
   }
 
