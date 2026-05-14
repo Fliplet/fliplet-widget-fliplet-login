@@ -274,8 +274,10 @@ Fliplet.Widget.instance('login', function(data) {
     var options = 'location=no,enableViewportScale=yes,toolbarposition=top,fullscreen=yes';
     var browser = window.cordova.InAppBrowser.open(loginUrl, '_blank', options);
 
-    function onLoadStart(event) {
+    function tryHandle(event, source) {
       if (!event || !event.url || iabHandled) return;
+      console.log('[Fliplet.Login][IAB ' + source + ']', event.url);
+
       if (event.url.indexOf(callbackPrefix) !== 0) return;
 
       var qs = parseQueryString(event.url);
@@ -301,8 +303,25 @@ Fliplet.Widget.instance('login', function(data) {
       handleAuthSuccess({ token: qs.token, user: user });
     }
 
+    function onLoadStart(event) {
+      tryHandle(event, 'loadstart');
+    }
+
+    function onLoadStop(event) {
+      // Android WebView doesn't always fire `shouldOverrideUrlLoading`
+      // for same-origin `location.href` redirects, so `loadstart` can
+      // miss the final callback URL hop on Android (the API renders
+      // its /v1/auth/return-token fallback page and the user gets
+      // stranded). `loadstop` fires reliably on every navigation
+      // completion on both platforms — it's the safety net. Both
+      // listeners short-circuit via `iabHandled` so we only run the
+      // success path once.
+      tryHandle(event, 'loadstop');
+    }
+
     function onExit() {
       browser.removeEventListener('loadstart', onLoadStart);
+      browser.removeEventListener('loadstop', onLoadStop);
       browser.removeEventListener('exit', onExit);
 
       // Only reset the button if the user closed the IAB before
@@ -314,6 +333,7 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     browser.addEventListener('loadstart', onLoadStart);
+    browser.addEventListener('loadstop', onLoadStop);
     browser.addEventListener('exit', onExit);
   }
 
