@@ -257,12 +257,15 @@ Fliplet.Widget.instance('login', function(data) {
     var loginUrl = buildCallbackLoginUrl(callbackPrefix);
     var iabHandled = false;
 
+    console.log('[openSignInIAB] callbackPrefix=', callbackPrefix, 'loginUrl=', loginUrl);
+
     showLoadingState();
 
     Fliplet.Navigate.url({
       url: loginUrl,
       inAppBrowser: true,
       onload: function(event) {
+        console.log('[IAB onload]', event && event.url);
         if (!event || !event.url) return;
         if (iabHandled) return;
 
@@ -292,6 +295,7 @@ Fliplet.Widget.instance('login', function(data) {
         }
       },
       onclose: function() {
+        console.log('[IAB onclose]');
         // User closed the IAB before completing — re-enable the button.
         hideLoadingState();
       }
