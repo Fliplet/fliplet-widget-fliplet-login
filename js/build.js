@@ -104,7 +104,7 @@ Fliplet.Widget.instance('login', function(data) {
     // Custom Tabs + custom URL scheme so all third-party SSO works
     // uniformly) is tracked in DEV-1209.
     if (Fliplet.Env.get('platform') !== 'web') {
-      // params.push('hideProviders=google');
+      params.push('hideProviders=google');
     }
 
     return apiHost + 'v1/auth/login?' + params.join('&');
