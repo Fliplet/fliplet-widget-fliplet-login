@@ -257,49 +257,64 @@ Fliplet.Widget.instance('login', function(data) {
     var loginUrl = buildCallbackLoginUrl(callbackPrefix);
     var iabHandled = false;
 
-    console.log('[openSignInIAB] callbackPrefix=', callbackPrefix, 'loginUrl=', loginUrl);
-
     showLoadingState();
 
-    Fliplet.Navigate.url({
-      url: loginUrl,
-      inAppBrowser: true,
-      onload: function(event) {
-        console.log('[IAB onload]', event && event.url);
-        if (!event || !event.url) return;
-        if (iabHandled) return;
+    // Bypass Fliplet.Navigate.url and open the InAppBrowser directly.
+    // The wrapper hardcodes `loadstart` for its own auth checks and
+    // doesn't expose the IAB instance, so we can't intercept the
+    // callback URL or close the IAB on success through it. Using the
+    // Cordova plugin directly gives us `loadstart` (fires before the
+    // API's fallback page paints) and direct `.close()` access.
+    if (!window.cordova || !window.cordova.InAppBrowser) {
+      console.error('[Fliplet.Login] cordova.InAppBrowser not available');
+      hideLoadingState();
+      return;
+    }
 
-        if (event.url.indexOf(callbackPrefix) === 0) {
-          var qs = parseQueryString(event.url);
+    var options = 'location=no,enableViewportScale=yes,toolbarposition=top,fullscreen=yes';
+    var browser = window.cordova.InAppBrowser.open(loginUrl, '_blank', options);
 
-          if (qs.token) {
-            iabHandled = true;
-            try {
-              if (event.iab && typeof event.iab.close === 'function') {
-                event.iab.close();
-              }
-            } catch (err) {
-              console.warn('[Fliplet.Login] failed to close IAB:', err);
-            }
+    function onLoadStart(event) {
+      if (!event || !event.url || iabHandled) return;
+      if (event.url.indexOf(callbackPrefix) !== 0) return;
 
-            var user = null;
+      var qs = parseQueryString(event.url);
 
-            try {
-              user = JSON.parse(qs.user || 'null');
-            } catch (err) {
-              console.warn('[Fliplet.Login] failed to parse user from callback:', err);
-            }
+      if (!qs.token) return;
 
-            handleAuthSuccess({ token: qs.token, user: user });
-          }
-        }
-      },
-      onclose: function() {
-        console.log('[IAB onclose]');
-        // User closed the IAB before completing — re-enable the button.
+      iabHandled = true;
+
+      try {
+        browser.close();
+      } catch (err) {
+        console.warn('[Fliplet.Login] failed to close IAB:', err);
+      }
+
+      var user = null;
+
+      try {
+        user = JSON.parse(qs.user || 'null');
+      } catch (err) {
+        console.warn('[Fliplet.Login] failed to parse user from callback:', err);
+      }
+
+      handleAuthSuccess({ token: qs.token, user: user });
+    }
+
+    function onExit() {
+      browser.removeEventListener('loadstart', onLoadStart);
+      browser.removeEventListener('exit', onExit);
+
+      // Only reset the button if the user closed the IAB before
+      // completing. On the success path handleAuthSuccess manages
+      // its own loading state through navigation.
+      if (!iabHandled) {
         hideLoadingState();
       }
-    });
+    }
+
+    browser.addEventListener('loadstart', onLoadStart);
+    browser.addEventListener('exit', onExit);
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -314,6 +329,14 @@ Fliplet.Widget.instance('login', function(data) {
       hideLoadingState();
       return;
     }
+
+    // Stamp the in-memory auth token so subsequent API calls in this
+    // chain (validateAccount, etc.) authenticate as the signed-in
+    // user, not the app's bootstrap appToken. Fliplet.Auth.signIn()
+    // (web popup) does this internally; the same-tab and native IAB
+    // paths reach here with just a raw token in hand, so we set it
+    // explicitly. Mirrors what initSession does at restore time.
+    Fliplet.User.setAuthToken(authResult.token);
 
     showLoadingState();
 
