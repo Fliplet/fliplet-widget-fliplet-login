@@ -79,7 +79,20 @@ Fliplet.Widget.instance('login', function(data) {
     var apiHost = getApiHost();
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
 
-    var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
+    // `prompt=login` forces the API to render the sign-in form even if
+    // there's still a valid `auth_token` cookie sitting in the WebView
+    // (native IAB cookie jars are isolated, and the Link-widget logout
+    // can't clear them; the same cookie also persists on web same-tab
+    // because `clearCookieData` deliberately preserves `auth_token`).
+    // OIDC's standard naming — matches what Google/Apple/Microsoft
+    // use to force re-auth. Embedded consumers that *do* want the
+    // auto-completion (CLI, VS Code, Studio popup re-open) simply
+    // don't pass this param.
+    var params = [
+      'return=callback',
+      'callback=' + encodeURIComponent(callback),
+      'prompt=login'
+    ];
     var appId = Fliplet.Env.get('appId');
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
