@@ -87,6 +87,7 @@ Fliplet.Widget.instance('login', function(data) {
     // is a callback for a sign-in we actually initiated.
     if (state) {
       var stateSep = callback.indexOf('?') === -1 ? '?' : '&';
+
       callback = callback + stateSep + 'state=' + encodeURIComponent(state);
     }
 
@@ -148,15 +149,21 @@ Fliplet.Widget.instance('login', function(data) {
 
   function generateAuthState() {
     var crypto = window.crypto || window.msCrypto;
+
     if (crypto && crypto.getRandomValues) {
       var bytes = new Uint8Array(16);
+
       crypto.getRandomValues(bytes);
+
       var hex = '';
+
       for (var i = 0; i < bytes.length; i++) {
         hex += (bytes[i] < 0x10 ? '0' : '') + bytes[i].toString(16);
       }
+
       return hex;
     }
+
     // Fallback — Math.random isn't cryptographically strong but a
     // missing crypto API is so rare in target browsers that we'd rather
     // degrade than disable the gate entirely.
@@ -175,7 +182,9 @@ Fliplet.Widget.instance('login', function(data) {
   function consumeAuthState() {
     try {
       var stored = window.sessionStorage.getItem(AUTH_STATE_STORAGE_KEY);
+
       window.sessionStorage.removeItem(AUTH_STATE_STORAGE_KEY);
+
       return stored;
     } catch (err) {
       return null;
@@ -199,9 +208,11 @@ Fliplet.Widget.instance('login', function(data) {
   function maskUrlForLogging(url) {
     try {
       var u = new URL(url);
+
       ['token', 'user', 'state'].forEach(function(key) {
         if (u.searchParams.has(key)) u.searchParams.set(key, '<redacted>');
       });
+
       return u.toString();
     } catch (err) {
       return url.split('?')[0];
@@ -298,6 +309,7 @@ Fliplet.Widget.instance('login', function(data) {
     showLoadingState();
 
     var state = generateAuthState();
+
     storeAuthState(state);
 
     var loginUrl = buildCallbackLoginUrl(buildSameTabCallbackUrl(), state);
@@ -328,6 +340,7 @@ Fliplet.Widget.instance('login', function(data) {
       console.warn('[Fliplet.Login] same-tab return rejected:', reason);
       cleanAuthReturnParamsFromUrl();
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+
       return true;
     }
 
@@ -376,6 +389,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     try {
       var expectedUrl = new URL(callbackBase);
+
       expectedOrigin = expectedUrl.origin;
       expectedPathname = expectedUrl.pathname;
     } catch (err) {
