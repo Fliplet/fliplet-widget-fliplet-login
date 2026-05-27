@@ -167,6 +167,7 @@ Fliplet.Widget.instance('login', function(data) {
     try {
       window.sessionStorage.setItem(AUTH_STATE_STORAGE_KEY, state);
     } catch (err) {
+      // eslint-disable-next-line no-console -- silent failure here means every subsequent return rejects with no debuggable cause
       console.warn('[Fliplet.Login] sessionStorage write failed, state check will reject return:', err);
     }
   }
@@ -255,6 +256,7 @@ Fliplet.Widget.instance('login', function(data) {
    */
   function openSignInPopup() {
     if (!window.Fliplet || !Fliplet.Auth || typeof Fliplet.Auth.signIn !== 'function') {
+      // eslint-disable-next-line no-console -- surface the fallback so it isn't invisible during debugging
       console.warn('[Fliplet.Login] Fliplet.Auth.signIn unavailable; falling back to same-tab sign-in');
       openSignInSameTab();
       return;
@@ -322,6 +324,7 @@ Fliplet.Widget.instance('login', function(data) {
     var expectedState = consumeAuthState();
 
     function reject(reason) {
+      // eslint-disable-next-line no-console -- security trace: state/shape rejections need to surface for incident triage
       console.warn('[Fliplet.Login] same-tab return rejected:', reason);
       cleanAuthReturnParamsFromUrl();
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
@@ -376,6 +379,7 @@ Fliplet.Widget.instance('login', function(data) {
       expectedOrigin = expectedUrl.origin;
       expectedPathname = expectedUrl.pathname;
     } catch (err) {
+      // eslint-disable-next-line no-console -- shouldn't happen (URL is built by us); if it does, it's the only signal of a real bug
       console.error('[Fliplet.Login] failed to parse callback URL:', err);
       return;
     }
@@ -403,6 +407,7 @@ Fliplet.Widget.instance('login', function(data) {
       // Mask token/user/state before logging — every IAB navigation
       // gets logged here and these URLs end up in remote log aggregators
       // and support-ticket screenshots.
+      // eslint-disable-next-line no-console -- diagnostic trace for the Android loadstop vs iOS loadstart hop ordering; URL is masked
       console.log('[Fliplet.Login][IAB ' + source + ']', maskUrlForLogging(event.url));
 
       var parsed;
@@ -432,6 +437,7 @@ Fliplet.Widget.instance('login', function(data) {
       var returnedState = parsed.searchParams.get('state');
 
       function rejectIab(reason) {
+        // eslint-disable-next-line no-console -- security trace: state/shape rejections need to surface for incident triage
         console.warn('[Fliplet.Login] IAB return rejected:', reason);
         Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
         hideLoadingState();
