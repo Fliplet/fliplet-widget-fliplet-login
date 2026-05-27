@@ -75,9 +75,20 @@ Fliplet.Widget.instance('login', function(data) {
     }
   }
 
-  function buildCallbackLoginUrl(callback) {
+  function buildCallbackLoginUrl(callback, state) {
     var apiHost = getApiHost();
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
+
+    // Attach the state nonce to the *callback* URL (not the login URL).
+    // The auth-loader template appends `&token=...&user=...` onto whatever
+    // callback URL we supply (see views/login.pug in fliplet-api), so any
+    // query params we put here round-trip back unchanged. That's how the
+    // state survives the redirect and lets us verify on return that this
+    // is a callback for a sign-in we actually initiated.
+    if (state) {
+      var stateSep = callback.indexOf('?') === -1 ? '?' : '&';
+      callback = callback + stateSep + 'state=' + encodeURIComponent(state);
+    }
 
     var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
     var appId = Fliplet.Env.get('appId');
@@ -88,15 +99,16 @@ Fliplet.Widget.instance('login', function(data) {
 
   /**
    * Returns the current page URL with any auth-return sentinel params
-   * (token / user / error) stripped, so repeat sign-ins don't accumulate
-   * stale params in the callback URL. Uses the URL API — fine for web
-   * where same-tab mode applies (all modern web browsers).
+   * (token / user / state / error) stripped, so repeat sign-ins don't
+   * accumulate stale params in the callback URL. Uses the URL API —
+   * fine for web where same-tab mode applies (all modern web browsers).
    */
   function buildSameTabCallbackUrl() {
     try {
       var url = new URL(window.location.href);
       url.searchParams.delete('token');
       url.searchParams.delete('user');
+      url.searchParams.delete('state');
       url.searchParams.delete('error');
 
       return url.toString();
@@ -116,10 +128,82 @@ Fliplet.Widget.instance('login', function(data) {
       var url = new URL(window.location.href);
       url.searchParams.delete('token');
       url.searchParams.delete('user');
+      url.searchParams.delete('state');
       url.searchParams.delete('error');
       window.history.replaceState({}, document.title, url.toString());
     } catch (err) {
       console.warn('[Fliplet.Login] failed to clean auth params from URL:', err);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // State nonce: defends the same-tab and IAB return legs against
+  // session-fixation. We mint a random value before redirecting, stash
+  // it in sessionStorage, and require the return URL to echo it back.
+  // Single-shot — we consume the stored value on either success or
+  // failure so a replay can't reuse the same nonce on a second arrival.
+  // ──────────────────────────────────────────────────────────────────────
+
+  var AUTH_STATE_STORAGE_KEY = 'fliplet_login_state';
+
+  function generateAuthState() {
+    var crypto = window.crypto || window.msCrypto;
+    if (crypto && crypto.getRandomValues) {
+      var bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      var hex = '';
+      for (var i = 0; i < bytes.length; i++) {
+        hex += (bytes[i] < 0x10 ? '0' : '') + bytes[i].toString(16);
+      }
+      return hex;
+    }
+    // Fallback — Math.random isn't cryptographically strong but a
+    // missing crypto API is so rare in target browsers that we'd rather
+    // degrade than disable the gate entirely.
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function storeAuthState(state) {
+    try {
+      window.sessionStorage.setItem(AUTH_STATE_STORAGE_KEY, state);
+    } catch (err) {
+      console.warn('[Fliplet.Login] sessionStorage write failed, state check will reject return:', err);
+    }
+  }
+
+  function consumeAuthState() {
+    try {
+      var stored = window.sessionStorage.getItem(AUTH_STATE_STORAGE_KEY);
+      window.sessionStorage.removeItem(AUTH_STATE_STORAGE_KEY);
+      return stored;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Validates the shape of the `user` object returned via the callback
+  // URL. Combined with the state-nonce check, this rejects forged URLs
+  // where an attacker controls the query string and tries to pin an
+  // arbitrary {id, email, userRoleId} into the victim's stored session.
+  function isValidUserShape(user) {
+    return !!user
+      && typeof user === 'object'
+      && typeof user.id === 'number'
+      && typeof user.email === 'string';
+  }
+
+  // Masks token / user / state query params before logging the URL,
+  // so the token doesn't surface in remote log aggregators, support-
+  // ticket screenshots, or screen recordings.
+  function maskUrlForLogging(url) {
+    try {
+      var u = new URL(url);
+      ['token', 'user', 'state'].forEach(function(key) {
+        if (u.searchParams.has(key)) u.searchParams.set(key, '<redacted>');
+      });
+      return u.toString();
+    } catch (err) {
+      return url.split('?')[0];
     }
   }
 
@@ -155,21 +239,6 @@ Fliplet.Widget.instance('login', function(data) {
     return false;
   }
 
-  function parseQueryString(url) {
-    var query = (url.split('?')[1] || '').split('#')[0];
-    var pairs = query.split('&');
-    var result = {};
-
-    pairs.forEach(function(pair) {
-      if (!pair) return;
-      var idx = pair.indexOf('=');
-      if (idx === -1) return;
-      result[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(pair.slice(idx + 1));
-    });
-
-    return result;
-  }
-
   // ──────────────────────────────────────────────────────────────────────
   // Sign-in flows
   // ──────────────────────────────────────────────────────────────────────
@@ -179,8 +248,18 @@ Fliplet.Widget.instance('login', function(data) {
    * sign-in page in a popup and handles the postMessage round-trip. On
    * success resolves with { user, token }; on failure rejects with an
    * Error (popup blocked, closed without completing, timed out, etc.).
+   *
+   * Fliplet.Auth is shipped by the Fliplet runtime — if it's missing
+   * (older runtime, build misconfiguration), fall back to the same-tab
+   * flow rather than throwing `Cannot read properties of undefined`.
    */
   function openSignInPopup() {
+    if (!window.Fliplet || !Fliplet.Auth || typeof Fliplet.Auth.signIn !== 'function') {
+      console.warn('[Fliplet.Login] Fliplet.Auth.signIn unavailable; falling back to same-tab sign-in');
+      openSignInSameTab();
+      return;
+    }
+
     showLoadingState();
 
     Fliplet.Auth.signIn().then(function(result) {
@@ -191,6 +270,9 @@ Fliplet.Widget.instance('login', function(data) {
       var message = (err && err.message) || T('widgets.login.fliplet.errors.unableLogin');
 
       // Don't toast for user-initiated cancellations (popup closed).
+      // This pattern-matches on the SDK's current message wording; if
+      // the SDK ever surfaces a structured `err.code === 'CANCELLED'`
+      // (or similar), prefer that over the regex.
       if (/cancelled|closed/i.test(message)) {
         return;
       }
@@ -213,7 +295,10 @@ Fliplet.Widget.instance('login', function(data) {
   function openSignInSameTab() {
     showLoadingState();
 
-    var loginUrl = buildCallbackLoginUrl(buildSameTabCallbackUrl());
+    var state = generateAuthState();
+    storeAuthState(state);
+
+    var loginUrl = buildCallbackLoginUrl(buildSameTabCallbackUrl(), state);
 
     window.location.assign(loginUrl);
   }
@@ -221,8 +306,9 @@ Fliplet.Widget.instance('login', function(data) {
   /**
    * Runs on widget mount. If the current URL has token + user query
    * params, we're on the return leg of a same-tab sign-in — extract
-   * them, clean the URL, and feed the result into handleAuthSuccess.
-   * Returns true if the return was handled so the caller can skip the
+   * them, validate the state nonce and user shape, clean the URL, and
+   * feed the result into handleAuthSuccess. Returns true if the return
+   * was handled (success OR rejection) so the caller can skip the
    * normal session-restore path.
    */
   function handleSameTabReturn() {
@@ -230,12 +316,32 @@ Fliplet.Widget.instance('login', function(data) {
 
     if (!q || !q.token) return false;
 
+    // Always consume the stored state, even on rejection — burning the
+    // nonce on first arrival prevents replay if an attacker manages to
+    // deliver the same URL twice.
+    var expectedState = consumeAuthState();
+
+    function reject(reason) {
+      console.warn('[Fliplet.Login] same-tab return rejected:', reason);
+      cleanAuthReturnParamsFromUrl();
+      Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+      return true;
+    }
+
+    if (!expectedState || !q.state || q.state !== expectedState) {
+      return reject('state nonce missing or mismatch');
+    }
+
     var user = null;
 
     try {
       user = JSON.parse(q.user || 'null');
     } catch (err) {
-      console.warn('[Fliplet.Login] failed to parse user from same-tab return:', err);
+      return reject('user payload failed to parse');
+    }
+
+    if (!isValidUserShape(user)) {
+      return reject('user payload failed shape validation');
     }
 
     cleanAuthReturnParamsFromUrl();
@@ -253,10 +359,28 @@ Fliplet.Widget.instance('login', function(data) {
    * the auth result. Same contract the CLI / VSCode extension use.
    */
   function openSignInIAB() {
-    var callbackPrefix = getApiOrigin() + '/v1/auth/return-token';
-    var loginUrl = buildCallbackLoginUrl(callbackPrefix);
+    var callbackBase = getApiOrigin() + '/v1/auth/return-token';
+    var state = generateAuthState();
+    var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
 
+    // Pre-parse the expected callback URL once for strict origin +
+    // pathname comparison. A prefix-match (`indexOf(...) === 0`) would
+    // accept `/v1/auth/return-token-anything?token=...` — exact match
+    // closes that.
+    var expectedOrigin;
+    var expectedPathname;
+
+    try {
+      var expectedUrl = new URL(callbackBase);
+      expectedOrigin = expectedUrl.origin;
+      expectedPathname = expectedUrl.pathname;
+    } catch (err) {
+      console.error('[Fliplet.Login] failed to parse callback URL:', err);
+      return;
+    }
+
+    storeAuthState(state);
     showLoadingState();
 
     // Bypass Fliplet.Navigate.url and open the InAppBrowser directly.
@@ -276,13 +400,24 @@ Fliplet.Widget.instance('login', function(data) {
 
     function tryHandle(event, source) {
       if (!event || !event.url || iabHandled) return;
-      console.log('[Fliplet.Login][IAB ' + source + ']', event.url);
+      // Mask token/user/state before logging — every IAB navigation
+      // gets logged here and these URLs end up in remote log aggregators
+      // and support-ticket screenshots.
+      console.log('[Fliplet.Login][IAB ' + source + ']', maskUrlForLogging(event.url));
 
-      if (event.url.indexOf(callbackPrefix) !== 0) return;
+      var parsed;
 
-      var qs = parseQueryString(event.url);
+      try {
+        parsed = new URL(event.url);
+      } catch (err) {
+        return;
+      }
 
-      if (!qs.token) return;
+      if (parsed.origin !== expectedOrigin || parsed.pathname !== expectedPathname) return;
+
+      var token = parsed.searchParams.get('token');
+
+      if (!token) return;
 
       iabHandled = true;
 
@@ -292,15 +427,33 @@ Fliplet.Widget.instance('login', function(data) {
         console.warn('[Fliplet.Login] failed to close IAB:', err);
       }
 
+      // Single-shot consume — burn the nonce regardless of outcome.
+      var expectedState = consumeAuthState();
+      var returnedState = parsed.searchParams.get('state');
+
+      function rejectIab(reason) {
+        console.warn('[Fliplet.Login] IAB return rejected:', reason);
+        Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+        hideLoadingState();
+      }
+
+      if (!expectedState || !returnedState || returnedState !== expectedState) {
+        return rejectIab('state nonce missing or mismatch');
+      }
+
       var user = null;
 
       try {
-        user = JSON.parse(qs.user || 'null');
+        user = JSON.parse(parsed.searchParams.get('user') || 'null');
       } catch (err) {
-        console.warn('[Fliplet.Login] failed to parse user from callback:', err);
+        return rejectIab('user payload failed to parse');
       }
 
-      handleAuthSuccess({ token: qs.token, user: user });
+      if (!isValidUserShape(user)) {
+        return rejectIab('user payload failed shape validation');
+      }
+
+      handleAuthSuccess({ token: token, user: user });
     }
 
     function onLoadStart(event) {
