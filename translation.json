@@ -96,7 +96,8 @@
           "loginFailed": "Login failed. Please try again later.",
           "sessionNotFound": "Login session not found",
           "unableLogin": "Unable to login. Try again later.",
-          "popupBlocked": "Please allow popups for this site and try again."
+          "popupBlocked": "Please allow popups for this site and try again.",
+          "userNotAFlipletAdmin": "Only Fliplet Admins can access this app."
         },
         "warnings": {
           "noRedirectWithoutSecurity": "Login verified. Redirection is disabled when security isn't enabled.",
