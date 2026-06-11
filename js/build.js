@@ -219,6 +219,46 @@ Fliplet.Widget.instance('login', function(data) {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // PS-1956 diagnostic logging. Temporary — routed through one function so
+  // there is a single console call site (and a single eslint-disable). All
+  // logs are prefixed so they can be grepped out of device logs, and tokens
+  // are masked to the region+type prefix and last 4 chars (the secret hash
+  // in the middle is never logged).
+  // ──────────────────────────────────────────────────────────────────────
+
+  function debug() {
+    // eslint-disable-next-line no-console
+    console.log.apply(console, ['[Fliplet.Login][PS-1956]'].concat([].slice.call(arguments)));
+  }
+
+  function maskToken(token) {
+    if (typeof token !== 'string' || !token) {
+      return String(token);
+    }
+
+    return token.length > 17 ? token.slice(0, 13) + '…' + token.slice(-4) : '<token>';
+  }
+
+  // Summarises a session object for logging without leaking secrets.
+  function describeSession(session) {
+    if (!session) {
+      return null;
+    }
+
+    var passports = session.server && session.server.passports;
+
+    return {
+      id: session.id,
+      userType: session.user && session.user.type,
+      userEmail: session.user && session.user.email,
+      source: session.client && session.client.source,
+      passportKeys: passports ? Object.keys(passports) : [],
+      hasFlipletLogin: !!(passports && passports.flipletLogin && passports.flipletLogin.length),
+      authToken: maskToken(session.auth_token)
+    };
+  }
+
   /**
    * Detects whether the widget is running in a Studio editor, Studio
    * preview, or V3 app preview context — anywhere the auth-loader
@@ -380,6 +420,8 @@ Fliplet.Widget.instance('login', function(data) {
     var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
 
+    debug('openSignInIAB: opening InAppBrowser', { loginUrl: maskUrlForLogging(loginUrl) });
+
     // Pre-parse the expected callback URL once for strict origin +
     // pathname comparison. A prefix-match (`indexOf(...) === 0`) would
     // accept `/v1/auth/return-token-anything?token=...` — exact match
@@ -440,6 +482,11 @@ Fliplet.Widget.instance('login', function(data) {
 
       iabHandled = true;
 
+      debug('openSignInIAB: callback intercepted with token', {
+        source: source,
+        token: maskToken(token)
+      });
+
       try {
         browser.close();
       } catch (err) {
@@ -451,6 +498,7 @@ Fliplet.Widget.instance('login', function(data) {
       var returnedState = parsed.searchParams.get('state');
 
       function rejectIab(reason) {
+        debug('openSignInIAB: IAB return REJECTED', { reason: reason });
         // eslint-disable-next-line no-console -- security trace: state/shape rejections need to surface for incident triage
         console.warn('[Fliplet.Login] IAB return rejected:', reason);
         Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
@@ -517,7 +565,15 @@ Fliplet.Widget.instance('login', function(data) {
   // ──────────────────────────────────────────────────────────────────────
 
   function handleAuthSuccess(authResult) {
+    debug('handleAuthSuccess: START', {
+      hasToken: !!(authResult && authResult.token),
+      token: maskToken(authResult && authResult.token),
+      userId: authResult && authResult.user && authResult.user.id,
+      userEmail: authResult && authResult.user && authResult.user.email
+    });
+
     if (!authResult || !authResult.token || !authResult.user) {
+      debug('handleAuthSuccess: missing token/user -> abort with error toast');
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
       return;
@@ -566,12 +622,16 @@ Fliplet.Widget.instance('login', function(data) {
       hideLoadingState();
 
       if (Fliplet.Env.get('disableSecurity')) {
+        debug('handleAuthSuccess: disableSecurity -> skip navigation, show success toast');
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
         return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.login'));
       }
 
+      debug('handleAuthSuccess: NAVIGATE to target screen', { action: _this.data && _this.data.action });
+
       return Fliplet.Navigate.to(_this.data.action);
     }).catch(function(err) {
+      debug('handleAuthSuccess: FAILED', { error: (err && err.message) || err });
       console.error('[Fliplet.Login] handleAuthSuccess failed:', err);
 
       Fliplet.Analytics.trackEvent({
@@ -692,52 +752,92 @@ Fliplet.Widget.instance('login', function(data) {
       return Promise.resolve(null);
     }
 
+    debug('getPassportForToken: validating stored token against /v1/session', maskToken(token));
+
     return Fliplet.API.request({
       url: 'v1/session',
       headers: { 'Auth-token': token }
     }).then(function(response) {
-      return getFlipletPassport(response && response.session);
-    }).catch(function() {
+      var session = response && response.session;
+
+      debug('getPassportForToken: /v1/session returned', describeSession(session));
+
+      var passport = getFlipletPassport(session);
+
+      debug('getPassportForToken: passport on token session =', passport ? 'PRESENT' : 'NONE');
+
+      return passport;
+    }).catch(function(err) {
       // Invalid / expired token — treat as signed out.
+      debug('getPassportForToken: /v1/session failed (token invalid/expired) ->', err && (err.message || err.status || err));
+
       return null;
     });
   }
 
   function initSession() {
+    debug('initSession: START', { online: Fliplet.Navigator.isOnline() });
+
     Fliplet.User.getCachedSession()
-      .catch(function() {
+      .catch(function(err) {
         // getCachedSession rejects when offline or before a session exists.
+        debug('initSession: getCachedSession rejected ->', err && (err.message || err));
+
         return null;
       })
       .then(function(session) {
+        debug('initSession: cached session =', describeSession(session));
+
         // 1. The cached session itself carries the passport (web / Studio
         //    preview, where getCachedSession() is the user's own session).
         var passport = getFlipletPassport(session);
 
         if (passport) {
+          debug('initSession: PATH 1 - flipletLogin passport on cached session', {
+            email: passport.email,
+            authToken: maskToken(passport.authToken)
+          });
+
           return { passport: passport, verified: true, session: session };
         }
 
         // 2. No passport on the cached session (native app-token session).
         //    The real login token is in App.Storage.
+        debug('initSession: no passport on cached session, checking App.Storage');
+
         return Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY).then(function(stored) {
+          debug('initSession: App.Storage[fliplet_login_component] =', stored ? {
+            email: stored.email,
+            authToken: maskToken(stored.auth_token)
+          } : null);
+
           if (!stored || !stored.auth_token) {
+            debug('initSession: PATH 2a - no stored token -> not signed in');
+
             return { passport: null, session: session };
           }
 
           // Offline: can't reach the server, so trust the stored token as a
           // best effort (unverified).
           if (!Fliplet.Navigator.isOnline()) {
+            debug('initSession: PATH 2b - offline, trusting stored token (unverified)');
+
             return { storedToken: stored.auth_token, verified: false, session: session };
           }
 
           // Online: confirm the stored token's session is actually signed in
           // (still has a flipletLogin passport). This rejects the app token,
           // and tokens left stale in storage after a logout.
+          debug('initSession: PATH 2c - online, verifying stored token server-side');
+
           return getPassportForToken(stored.auth_token).then(function(tokenPassport) {
             if (!tokenPassport) {
+              debug('initSession: stored token has NO flipletLogin passport -> not signed in');
+
               return { passport: null, session: session };
             }
+
+            debug('initSession: stored token VERIFIED as signed in', { email: tokenPassport.email });
 
             return { passport: tokenPassport, verified: true, session: session };
           });
@@ -745,6 +845,12 @@ Fliplet.Widget.instance('login', function(data) {
       })
       .then(function(state) {
         var authToken = state.passport ? state.passport.authToken : state.storedToken;
+
+        debug('initSession: resolved state', {
+          signedIn: !!authToken,
+          verified: !!state.verified,
+          authToken: maskToken(authToken)
+        });
 
         if (!authToken) {
           return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
@@ -775,7 +881,11 @@ Fliplet.Widget.instance('login', function(data) {
           return state;
         }
 
+        debug('initSession: running validateAccount');
+
         return Fliplet.Login.validateAccount({ updateUserStorage: true }).then(function() {
+          debug('initSession: validateAccount resolved');
+
           return state;
         });
       })
@@ -798,6 +908,8 @@ Fliplet.Widget.instance('login', function(data) {
           return Promise.reject('Preventing navigation to another screen in Preview mode.');
         }
 
+        debug('initSession: DECISION = NAVIGATE to target screen', { action: _this.data && _this.data.action });
+
         var navigate = Fliplet.Navigate.to(_this.data.action);
 
         if (typeof navigate === 'object' && typeof navigate.then === 'function') {
@@ -806,6 +918,7 @@ Fliplet.Widget.instance('login', function(data) {
         }
       })
       .catch(function(error) {
+        debug('initSession: DECISION = SHOW LOGIN SCREEN', { reason: (error && error.message) || error });
         console.warn(error);
         showStart();
       });
@@ -823,17 +936,37 @@ Fliplet.Widget.instance('login', function(data) {
 
       var isWeb = Fliplet.Env.get('platform') === 'web';
 
+      debug('login button clicked', {
+        platform: Fliplet.Env.get('platform'),
+        isWeb: isWeb,
+        isStudioOrPreviewContext: isStudioOrPreviewContext(),
+        online: Fliplet.Navigator.isOnline()
+      });
+
       if (isWeb && !isStudioOrPreviewContext()) {
+        debug('-> openSignInSameTab');
         openSignInSameTab();
       } else if (isWeb) {
         // Studio preview / interact / V3 app preview / any iframed
         // context: same-tab would hijack the parent iframe and the
         // auth-loader refuses framing via X-Frame-Options. Fall back
         // to the popup flow.
+        debug('-> openSignInPopup');
         openSignInPopup();
       } else {
+        debug('-> openSignInIAB (native)');
         openSignInIAB();
       }
+    });
+
+    debug('init', {
+      platform: Fliplet.Env.get('platform'),
+      interact: Fliplet.Env.get('interact'),
+      preview: Fliplet.Env.get('preview'),
+      mode: Fliplet.Env.get('mode'),
+      disableSecurity: Fliplet.Env.get('disableSecurity'),
+      online: Fliplet.Navigator.isOnline(),
+      action: _this.data && _this.data.action
     });
 
     if (Fliplet.Env.get('platform') === 'web') {
@@ -841,9 +974,11 @@ Fliplet.Widget.instance('login', function(data) {
       // token + user in the query string. Process it before falling
       // through to the normal session restore.
       if (handleSameTabReturn()) {
+        debug('web: handleSameTabReturn handled the return leg; skipping initSession');
         return;
       }
 
+      debug('web: no return leg, running initSession');
       initSession();
 
       if (Fliplet.Env.get('interact')) {
@@ -868,7 +1003,11 @@ Fliplet.Widget.instance('login', function(data) {
         }
       });
     } else {
-      document.addEventListener('deviceready', initSession);
+      debug('native: waiting for deviceready to run initSession');
+      document.addEventListener('deviceready', function() {
+        debug('native: deviceready fired, running initSession');
+        initSession();
+      });
     }
   }
 
