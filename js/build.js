@@ -611,30 +611,38 @@ Fliplet.Widget.instance('login', function(data) {
   // ──────────────────────────────────────────────────────────────────────
   // Already-signed-in detection.
   //
-  // Source of truth is the flipletLogin PASSPORT on the session, not
-  // `session.user`. In a live app / Studio preview the session bearer is
-  // the app token, so `session.user` is always the app-token user
-  // (`user.type === 'appToken'`) — the real signed-in identity lives in
-  // `session.server.passports.flipletLogin` (carries the user's auth_token)
-  // and its freshly re-validated public copy `session.accounts.flipletLogin`
-  // (carries id/email/userRoleId). Keying off `session.user.type` is what
-  // broke preview: a preview boots with the app token, so a storage-only
-  // check finds no `fliplet_login_component` entry (App.Storage is per-app
-  // and the previewed app has its own namespace) and sends an already
-  // signed-in user back to the login screen.
+  // The ONLY reliable "this user is signed in to the app" signal is a
+  // `flipletLogin` passport on the session that the user's auth token
+  // resolves to. Two facts drive the logic below:
   //
-  // App.Storage remains a FALLBACK for the cases where the session carries
-  // no passport — an offline restore, or a full reload that left only an
-  // app-token session — so the previous behaviour is preserved there.
+  //  - The cached/bootstrap session is NOT always the user's session. On
+  //    native, Fliplet bootstrap re-fetches /v1/session with the server
+  //    injected APP TOKEN on every load, so getCachedSession() returns the
+  //    app-token session (`user.type === 'appToken'`, empty passports) even
+  //    when the user is logged in. The user's real login token — whose
+  //    session DOES carry the flipletLogin passport — lives in App.Storage.
+  //    In web / Studio preview, getCachedSession() IS the user's session and
+  //    carries the passport directly.
+  //
+  //  - A bare token check is not enough. /v1/user returns 200 for the app
+  //    token and for a stale token whose passport was removed by logout
+  //    (App.Storage is NOT cleared on logout), so trusting "a token exists"
+  //    or "the token resolves to a user" navigates a signed-out user straight
+  //    to the target screen. We must confirm the PASSPORT specifically.
+  //
+  // So: trust the cached session if it carries the passport (web/preview);
+  // otherwise validate the App.Storage token's own session against the
+  // server (native). App.Storage is trusted without validation only OFFLINE.
   // ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Extracts the signed-in user's flipletLogin passport from a cached
-   * session. Merges the stored credential (server.passports — has the
+   * Extracts the signed-in user's flipletLogin passport from a session
+   * object. Merges the stored credential (server.passports — has the
    * auth_token) with the validated public profile (accounts — has id /
-   * email / userRoleId). Returns a normalised object or null when no
-   * usable passport is present.
-   * @param {Object} session - Session returned by Fliplet.User.getCachedSession()
+   * email / userRoleId). Works for both getCachedSession() and a
+   * /v1/session response. Returns a normalised object, or null when the
+   * session carries no usable flipletLogin passport.
+   * @param {Object} session - A session object (getPublic shape)
    * @returns {Object|null} Normalised passport details, or null
    */
   function getFlipletPassport(session) {
@@ -653,9 +661,8 @@ Fliplet.Widget.instance('login', function(data) {
     credential = credential || {};
     profile = profile || {};
 
-    // The user's real auth_token only lives on the stored credential. Without
-    // it we can't restore the session as the user, so treat that as "no passport"
-    // and let the App.Storage fallback take over.
+    // The user's real auth_token only lives on the stored credential. No
+    // token means no usable passport — treat the session as signed out.
     if (!credential.auth_token) {
       return null;
     }
@@ -670,52 +677,100 @@ Fliplet.Widget.instance('login', function(data) {
     };
   }
 
+  /**
+   * Asks the server whether the session behind a specific token carries a
+   * flipletLogin passport. Used on native, where the cached session is the
+   * app token: the real login token (from App.Storage) must be checked
+   * directly. Resolves with normalised passport details, or null when the
+   * token is invalid/expired or its session has been signed out (passport
+   * removed by logout).
+   * @param {String} token - The candidate user auth token
+   * @returns {Promise<Object|null>} Passport details, or null
+   */
+  function getPassportForToken(token) {
+    if (!token) {
+      return Promise.resolve(null);
+    }
+
+    return Fliplet.API.request({
+      url: 'v1/session',
+      headers: { 'Auth-token': token }
+    }).then(function(response) {
+      return getFlipletPassport(response && response.session);
+    }).catch(function() {
+      // Invalid / expired token — treat as signed out.
+      return null;
+    });
+  }
+
   function initSession() {
     Fliplet.User.getCachedSession()
       .catch(function() {
         // getCachedSession rejects when offline or before a session exists.
-        // Fall through with no session; the App.Storage fallback handles it.
         return null;
       })
       .then(function(session) {
+        // 1. The cached session itself carries the passport (web / Studio
+        //    preview, where getCachedSession() is the user's own session).
         var passport = getFlipletPassport(session);
 
         if (passport) {
-          // Signed in via the session passport. Restore the user's real auth
-          // token (not the app token) so downstream API calls authenticate as
-          // the signed-in user, and refresh the per-app storage the rest of
-          // the widget (and the App List component) reads.
-          Fliplet.User.setAuthToken(passport.authToken);
-
-          return Fliplet.Login.updateUserStorage({
-            id: passport.id,
-            region: passport.region,
-            userRoleId: passport.userRoleId,
-            authToken: passport.authToken,
-            email: passport.email,
-            legacy: passport.legacy
-          }).then(function() {
-            return { signedIn: true, fromPassport: true, session: session };
-          });
+          return { passport: passport, verified: true, session: session };
         }
 
-        // No passport on the session — fall back to the per-app storage the
-        // sign-in flow persisted (offline / app-token-only session case).
+        // 2. No passport on the cached session (native app-token session).
+        //    The real login token is in App.Storage.
         return Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY).then(function(stored) {
           if (!stored || !stored.auth_token) {
-            return { signedIn: false, session: session };
+            return { passport: null, session: session };
           }
 
-          Fliplet.User.setAuthToken(stored.auth_token);
+          // Offline: can't reach the server, so trust the stored token as a
+          // best effort (unverified).
+          if (!Fliplet.Navigator.isOnline()) {
+            return { storedToken: stored.auth_token, verified: false, session: session };
+          }
 
-          return { signedIn: true, fromPassport: false, session: session };
+          // Online: confirm the stored token's session is actually signed in
+          // (still has a flipletLogin passport). This rejects the app token,
+          // and tokens left stale in storage after a logout.
+          return getPassportForToken(stored.auth_token).then(function(tokenPassport) {
+            if (!tokenPassport) {
+              return { passport: null, session: session };
+            }
+
+            return { passport: tokenPassport, verified: true, session: session };
+          });
         });
       })
       .then(function(state) {
-        if (!state.signedIn) {
+        var authToken = state.passport ? state.passport.authToken : state.storedToken;
+
+        if (!authToken) {
           return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
         }
 
+        // Restore the user's real auth token so downstream API calls (and the
+        // App List component) act as the signed-in user, not the app token.
+        Fliplet.User.setAuthToken(authToken);
+
+        if (!state.passport) {
+          // Offline best-effort path: no fresh passport details to persist.
+          return state;
+        }
+
+        return Fliplet.Login.updateUserStorage({
+          id: state.passport.id,
+          region: state.passport.region,
+          userRoleId: state.passport.userRoleId,
+          authToken: authToken,
+          email: state.passport.email,
+          legacy: state.passport.legacy
+        }).then(function() {
+          return state;
+        });
+      })
+      .then(function(state) {
         if (!Fliplet.Navigator.isOnline()) {
           return state;
         }
@@ -733,15 +788,13 @@ Fliplet.Widget.instance('login', function(data) {
           return Promise.reject(T('widgets.login.fliplet.warnings.noRedirectWhenEditing'));
         }
 
-        // Preview/Studio guard: only navigate away from the login screen when
-        // the user is genuinely signed in via a passport. Without this, a
-        // preview with no passport would navigate on the strength of a stale
-        // App.Storage entry left over from a previous (non-preview) session.
+        // Preview/Studio guard: in preview, only navigate when we have a
+        // server-verified passport — never on the offline best-effort path.
         var sourceIsStudio = state.session
           && state.session.client
           && state.session.client.source === 'studio';
 
-        if ((isStudioOrPreviewContext() || sourceIsStudio) && !state.fromPassport) {
+        if ((isStudioOrPreviewContext() || sourceIsStudio) && !state.verified) {
           return Promise.reject('Preventing navigation to another screen in Preview mode.');
         }
 
