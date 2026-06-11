@@ -202,6 +202,16 @@ Fliplet.Widget.instance('login', function(data) {
       && typeof user.email === 'string';
   }
 
+  // Detects an app-token "user" — the synthetic account behind a Fliplet app's
+  // bootstrap token (email like `token-eu-130990-494095-android-enterprise@fliplet.com`).
+  // The callback `user` payload doesn't carry `type`, so we match the reserved
+  // email pattern. A real sign-in must never resolve to one of these.
+  function isAppTokenUser(user) {
+    return !!user
+      && typeof user.email === 'string'
+      && /^token-[\w-]+@fliplet\.com$/i.test(user.email);
+  }
+
   // Masks token / user / state query params before logging the URL,
   // so the token doesn't surface in remote log aggregators, support-
   // ticket screenshots, or screen recordings.
@@ -518,6 +528,23 @@ Fliplet.Widget.instance('login', function(data) {
 
   function handleAuthSuccess(authResult) {
     if (!authResult || !authResult.token || !authResult.user) {
+      Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+      hideLoadingState();
+      return;
+    }
+
+    // Defence in depth: the unified sign-in must never return an app token as
+    // the signed-in user. In the native IAB the cookie jar is shared with the
+    // app WebView, so a stale/missing server-side guard can auto-complete the
+    // login as the app's bootstrap appToken (id 115416-style, email
+    // token-…@fliplet.com). Navigating on that lands on the target screen,
+    // which then rejects it ("Please login using your Fliplet Studio
+    // credentials"). Catch it here and keep the user on the login form.
+    if (isAppTokenUser(authResult.user)) {
+      debug('handleAuthSuccess: returned user is an APP TOKEN, not a real login -> reject', {
+        userId: authResult.user.id,
+        userEmail: authResult.user.email
+      });
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
       return;
