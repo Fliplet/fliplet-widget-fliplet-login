@@ -24,7 +24,6 @@
   "build": {
     "dependencies": [
       "fliplet-core",
-      "fliplet-auth",
       "bootstrap",
       "lodash",
       "fliplet-security",
