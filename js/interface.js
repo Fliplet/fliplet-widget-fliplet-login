@@ -4,6 +4,9 @@ var appId = Fliplet.Env.get('appId');
 var headingValue = data.heading || 'Welcome to the login of this app';
 $('#login_heading').val(headingValue).trigger('change');
 
+var buttonLabelValue = data.buttonLabel || 'Sign in';
+$('#button_label').val(buttonLabelValue).trigger('change');
+
 var page = Fliplet.Widget.getPage();
 var omitPages = page ? [page.id] : [];
 
@@ -46,6 +49,7 @@ linkActionProvider.then(function(result) {
 
 function save(notifyComplete) {
   data.heading = $('#login_heading').val();
+  data.buttonLabel = $('#button_label').val();
   Fliplet.Widget.save(data).then(function() {
     if (notifyComplete) {
       Fliplet.Widget.complete();
@@ -77,6 +81,10 @@ function checkSecurityRules () {
 }
 
 $('#login_heading').on('keyup change paste blur', $.debounce(function() {
+  save();
+}, 500));
+
+$('#button_label').on('keyup change paste blur', $.debounce(function() {
   save();
 }, 500));
 
