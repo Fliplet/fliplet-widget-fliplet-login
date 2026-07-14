@@ -207,9 +207,12 @@ Fliplet.Widget.instance('login', function(data) {
   // The callback `user` payload doesn't carry `type`, so we match the reserved
   // email pattern. A real sign-in must never resolve to one of these.
   function isAppTokenUser(user) {
+    // Token names are user-supplied (spaces become dashes, but any other
+    // punctuation survives into the email), so match anything between the
+    // reserved `token-` prefix and the @fliplet.com domain.
     return !!user
       && typeof user.email === 'string'
-      && /^token-[\w-]+@fliplet\.com$/i.test(user.email);
+      && /^token-[^@]*@fliplet\.com$/i.test(user.email);
   }
 
   // Masks token / user / state query params before logging the URL,
