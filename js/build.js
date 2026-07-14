@@ -544,7 +544,7 @@ Fliplet.Widget.instance('login', function(data) {
     // which then rejects it ("Please login using your Fliplet Studio
     // credentials"). Catch it here and keep the user on the login form.
     if (isAppTokenUser(authResult.user)) {
-      debug('handleAuthSuccess: returned user is an APP TOKEN, not a real login -> reject', {
+      console.warn('[Fliplet.Login] handleAuthSuccess: returned user is an app token, not a real login — rejecting', {
         userId: authResult.user.id,
         userEmail: authResult.user.email
       });
