@@ -77,6 +77,7 @@ Fliplet.Widget.instance('login', function(data) {
 
   function buildCallbackLoginUrl(callback, state) {
     var apiHost = getApiHost();
+
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
 
     // Attach the state nonce to the *callback* URL (not the login URL).
@@ -93,6 +94,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
     var appId = Fliplet.Env.get('appId');
+
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
     return apiHost + 'v1/auth/login?' + params.join('&');
@@ -107,6 +109,7 @@ Fliplet.Widget.instance('login', function(data) {
   function buildSameTabCallbackUrl() {
     try {
       var url = new URL(window.location.href);
+
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
@@ -127,6 +130,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     try {
       var url = new URL(window.location.href);
+
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
@@ -283,6 +287,7 @@ Fliplet.Widget.instance('login', function(data) {
       // eslint-disable-next-line no-console -- surface the fallback so it isn't invisible during debugging
       console.warn('[Fliplet.Login] Fliplet.Auth.signIn unavailable; falling back to same-tab sign-in');
       openSignInSameTab();
+
       return;
     }
 
@@ -409,6 +414,7 @@ Fliplet.Widget.instance('login', function(data) {
     } catch (err) {
       // eslint-disable-next-line no-console -- shouldn't happen (URL is built by us); if it does, it's the only signal of a real bug
       console.error('[Fliplet.Login] failed to parse callback URL:', err);
+
       return;
     }
 
@@ -424,6 +430,7 @@ Fliplet.Widget.instance('login', function(data) {
     if (!window.cordova || !window.cordova.InAppBrowser) {
       console.error('[Fliplet.Login] cordova.InAppBrowser not available');
       hideLoadingState();
+
       return;
     }
 
@@ -562,6 +569,7 @@ Fliplet.Widget.instance('login', function(data) {
     if (!authResult || !authResult.token || !authResult.user) {
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
+
       return;
     }
 
@@ -579,6 +587,7 @@ Fliplet.Widget.instance('login', function(data) {
       });
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
+
       return;
     }
 
@@ -633,6 +642,7 @@ Fliplet.Widget.instance('login', function(data) {
 
       if (Fliplet.Env.get('disableSecurity')) {
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
+
         return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.login'));
       }
 
@@ -646,6 +656,7 @@ Fliplet.Widget.instance('login', function(data) {
       });
 
       var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
+
       _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
       hideLoadingState();
     });
@@ -668,9 +679,11 @@ Fliplet.Widget.instance('login', function(data) {
 
   function hideLoadingState() {
     var $btn = _this.$container.find('.fliplet-login-button');
+
     $btn.prop('disabled', false).removeClass('loading');
 
     var original = $btn.data('original-label');
+
     if (original) $btn.text(original);
   }
 
@@ -883,13 +896,18 @@ Fliplet.Widget.instance('login', function(data) {
           return state;
         }
 
-        return Fliplet.Login.updateUserStorage({
-          id: state.passport.id,
-          region: state.passport.region,
-          userRoleId: state.passport.userRoleId,
-          authToken: authToken,
-          email: state.passport.email,
-          legacy: state.passport.legacy
+        return Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY).then(function(stored) {
+          return Fliplet.Login.updateUserStorage({
+            id: state.passport.id,
+            region: state.passport.region,
+            userRoleId: state.passport.userRoleId,
+            // Keep the stored SESSION token when there is one: future restore
+            // passes need it to re-attach the passport after the app session
+            // rotates (the copy endpoint resolves its source by session token).
+            authToken: (stored && stored.auth_token) || state.passport.authToken,
+            email: state.passport.email,
+            legacy: state.passport.legacy
+          });
         }).then(function() {
           return state;
         });
@@ -926,6 +944,7 @@ Fliplet.Widget.instance('login', function(data) {
 
         if (typeof navigate === 'object' && typeof navigate.then === 'function') {
           showStart();
+
           return navigate;
         }
       })
