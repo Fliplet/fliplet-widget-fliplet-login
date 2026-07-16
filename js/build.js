@@ -77,6 +77,7 @@ Fliplet.Widget.instance('login', function(data) {
 
   function buildCallbackLoginUrl(callback, state) {
     var apiHost = getApiHost();
+
     if (apiHost.charAt(apiHost.length - 1) !== '/') apiHost += '/';
 
     // Attach the state nonce to the *callback* URL (not the login URL).
@@ -93,6 +94,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
     var appId = Fliplet.Env.get('appId');
+
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
     return apiHost + 'v1/auth/login?' + params.join('&');
@@ -107,6 +109,7 @@ Fliplet.Widget.instance('login', function(data) {
   function buildSameTabCallbackUrl() {
     try {
       var url = new URL(window.location.href);
+
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
@@ -127,6 +130,7 @@ Fliplet.Widget.instance('login', function(data) {
 
     try {
       var url = new URL(window.location.href);
+
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
@@ -283,6 +287,7 @@ Fliplet.Widget.instance('login', function(data) {
       // eslint-disable-next-line no-console -- surface the fallback so it isn't invisible during debugging
       console.warn('[Fliplet.Login] Fliplet.Auth.signIn unavailable; falling back to same-tab sign-in');
       openSignInSameTab();
+
       return;
     }
 
@@ -392,6 +397,7 @@ Fliplet.Widget.instance('login', function(data) {
     var state = generateAuthState();
     var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
+    var pendingAuthResult = null;
 
     // Pre-parse the expected callback URL once for strict origin +
     // pathname comparison. A prefix-match (`indexOf(...) === 0`) would
@@ -408,6 +414,7 @@ Fliplet.Widget.instance('login', function(data) {
     } catch (err) {
       // eslint-disable-next-line no-console -- shouldn't happen (URL is built by us); if it does, it's the only signal of a real bug
       console.error('[Fliplet.Login] failed to parse callback URL:', err);
+
       return;
     }
 
@@ -423,6 +430,7 @@ Fliplet.Widget.instance('login', function(data) {
     if (!window.cordova || !window.cordova.InAppBrowser) {
       console.error('[Fliplet.Login] cordova.InAppBrowser not available');
       hideLoadingState();
+
       return;
     }
 
@@ -486,7 +494,24 @@ Fliplet.Widget.instance('login', function(data) {
         return rejectIab('user payload failed shape validation');
       }
 
-      handleAuthSuccess({ token: token, user: user });
+      // Don't run the success path yet: on iOS a WebView navigation issued
+      // while the IAB dismissal transition is in flight gets swallowed by
+      // the native view-controller transition, so Navigate.to at the end of
+      // handleAuthSuccess would silently do nothing. Stash the result and
+      // let onExit (which Cordova fires after close() completes on both
+      // platforms) kick it off once the IAB is fully gone.
+      pendingAuthResult = { token: token, user: user };
+
+      // Safety net if a plugin quirk drops the exit event: run the success
+      // path anyway rather than stranding a completed sign-in.
+      setTimeout(function() {
+        if (pendingAuthResult) {
+          var authResult = pendingAuthResult;
+
+          pendingAuthResult = null;
+          handleAuthSuccess(authResult);
+        }
+      }, 3000);
     }
 
     function onLoadStart(event) {
@@ -509,6 +534,17 @@ Fliplet.Widget.instance('login', function(data) {
       browser.removeEventListener('loadstart', onLoadStart);
       browser.removeEventListener('loadstop', onLoadStop);
       browser.removeEventListener('exit', onExit);
+
+      // Success path: the IAB is fully dismissed now, so the navigation at
+      // the end of handleAuthSuccess can't be swallowed by the transition.
+      if (pendingAuthResult) {
+        var authResult = pendingAuthResult;
+
+        pendingAuthResult = null;
+        handleAuthSuccess(authResult);
+
+        return;
+      }
 
       // Only reset the button if the user closed the IAB before
       // completing. On the success path handleAuthSuccess manages
@@ -533,6 +569,7 @@ Fliplet.Widget.instance('login', function(data) {
     if (!authResult || !authResult.token || !authResult.user) {
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
+
       return;
     }
 
@@ -550,30 +587,38 @@ Fliplet.Widget.instance('login', function(data) {
       });
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
+
       return;
     }
 
-    // Stamp the in-memory auth token so subsequent API calls in this
-    // chain (validateAccount, etc.) authenticate as the signed-in
-    // user, not the app's bootstrap appToken. Fliplet.Auth.signIn()
-    // (web popup) does this internally; the same-tab and native IAB
-    // paths reach here with just a raw token in hand, so we set it
-    // explicitly. Mirrors what initSession does at restore time.
-    Fliplet.User.setAuthToken(authResult.token);
-
     showLoadingState();
 
-    // Note: Fliplet.Auth.signIn() already writes fliplet_login_component
-    // and calls setAuthToken. The updateUserStorage call below is kept
-    // for backwards compatibility with any consumer that reads a field
-    // the SDK doesn't write.
-    return Fliplet.Login.updateUserStorage({
-      id: authResult.user.id,
-      region: authResult.token.substr(0, 2),
-      userRoleId: authResult.user.userRoleId,
-      authToken: authResult.token,
-      email: authResult.user.email,
-      legacy: authResult.user.legacy
+    // Attach the passport to the app's session BEFORE the token swap and
+    // navigation, so the destination screen's security check and any app
+    // list component already see the signed-in state when they load.
+    return attachPassportToCurrentSession(authResult.token).then(function() {
+      // Stamp the in-memory auth token so subsequent API calls in this
+      // chain (validateAccount, etc.) authenticate as the signed-in
+      // user, not the app's bootstrap appToken. Fliplet.Auth.signIn()
+      // (web popup) does this internally; the same-tab and native IAB
+      // paths reach here with just a raw token in hand, so we set it
+      // explicitly. Mirrors what initSession does at restore time.
+      Fliplet.User.setAuthToken(authResult.token);
+
+      return refreshCachedSession();
+    }).then(function() {
+      // Note: Fliplet.Auth.signIn() already writes fliplet_login_component
+      // and calls setAuthToken. The updateUserStorage call below is kept
+      // for backwards compatibility with any consumer that reads a field
+      // the SDK doesn't write.
+      return Fliplet.Login.updateUserStorage({
+        id: authResult.user.id,
+        region: authResult.token.substr(0, 2),
+        userRoleId: authResult.user.userRoleId,
+        authToken: authResult.token,
+        email: authResult.user.email,
+        legacy: authResult.user.legacy
+      });
     }).then(function() {
       return Fliplet.Hooks.run('login', {
         passport: 'fliplet',
@@ -597,6 +642,7 @@ Fliplet.Widget.instance('login', function(data) {
 
       if (Fliplet.Env.get('disableSecurity')) {
         console.log('Redirection to other screens is disabled when security isn\'t enabled.');
+
         return Fliplet.UI.Toast(T('widgets.login.fliplet.successToast.login'));
       }
 
@@ -610,6 +656,7 @@ Fliplet.Widget.instance('login', function(data) {
       });
 
       var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
+
       _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
       hideLoadingState();
     });
@@ -632,9 +679,11 @@ Fliplet.Widget.instance('login', function(data) {
 
   function hideLoadingState() {
     var $btn = _this.$container.find('.fliplet-login-button');
+
     $btn.prop('disabled', false).removeClass('loading');
 
     var original = $btn.data('original-label');
+
     if (original) $btn.text(original);
   }
 
@@ -733,6 +782,44 @@ Fliplet.Widget.instance('login', function(data) {
     });
   }
 
+  /**
+   * Copies the flipletLogin passport from the signed-in session onto the
+   * app's CURRENT session. The unified sign-in happens on the auth page's
+   * own session, but everything outside this widget (app list, protected
+   * screen security) decides "signed in" by reading the current session —
+   * without this step the passport is invisible to the rest of the app.
+   * Uses the runtime's default credentials — the same ones the session
+   * cache refresh below uses — so the copy targets the session the app is
+   * actually running under right now (app sessions rotate when the served
+   * page is re-fetched, so a token captured earlier can go stale). Must
+   * run BEFORE Fliplet.User.setAuthToken swaps to the user's token.
+   * Best-effort: on failure (e.g. a cross-region source session) sign-in
+   * continues — screens with this widget still work via the stored token.
+   * @param {String} token - The signed-in session's auth token
+   * @returns {Promise} Always resolves
+   */
+  function attachPassportToCurrentSession(token) {
+    return Fliplet.API.request({
+      url: 'v1/session/providers/copy',
+      method: 'POST',
+      data: { source_session_auth_token: token }
+    }).catch(function(err) {
+      console.warn('[Fliplet.Login] failed to attach passport to the current session:', err);
+    });
+  }
+
+  /**
+   * Refreshes the persisted session cache so consumers reading
+   * getCachedSession() (app list, security checks) see the passport
+   * attached above without waiting for the 30-minute renewal.
+   * @returns {Promise} Always resolves
+   */
+  function refreshCachedSession() {
+    return Fliplet.User.getCachedSession({ force: true }).catch(function(err) {
+      console.warn('[Fliplet.Login] failed to refresh the cached session:', err);
+    });
+  }
+
   function initSession() {
     Fliplet.User.getCachedSession()
       .catch(function() {
@@ -769,7 +856,7 @@ Fliplet.Widget.instance('login', function(data) {
               return { passport: null, session: session };
             }
 
-            return { passport: tokenPassport, verified: true, session: session };
+            return { passport: tokenPassport, verified: true, session: session, storedToken: stored.auth_token };
           });
         });
       })
@@ -780,22 +867,47 @@ Fliplet.Widget.instance('login', function(data) {
           return Promise.reject(T('widgets.login.fliplet.errors.sessionNotFound'));
         }
 
-        // Restore the user's real auth token so downstream API calls (and the
-        // App List component) act as the signed-in user, not the app token.
-        Fliplet.User.setAuthToken(authToken);
+        // The passport was found via the stored token but is missing from
+        // the app's own (cached) session — e.g. the app session rotated, or
+        // the sign-in completed on a different session. Re-attach it so the
+        // rest of the app sees the signed-in state.
+        var needsSessionAttach = state.passport && !getFlipletPassport(state.session);
 
+        // The copy endpoint resolves the SOURCE by session token — that's
+        // what storage holds after a unified sign-in. Legacy storage holds
+        // a user token, for which the copy fails softly and we continue.
+        var attachPassport = needsSessionAttach
+          ? attachPassportToCurrentSession(state.storedToken || authToken)
+          : Promise.resolve();
+
+        return attachPassport.then(function() {
+          // Restore the user's real auth token so downstream API calls (and the
+          // App List component) act as the signed-in user, not the app token.
+          Fliplet.User.setAuthToken(authToken);
+
+          return needsSessionAttach ? refreshCachedSession() : undefined;
+        }).then(function() {
+          return state;
+        });
+      })
+      .then(function(state) {
         if (!state.passport) {
           // Offline best-effort path: no fresh passport details to persist.
           return state;
         }
 
-        return Fliplet.Login.updateUserStorage({
-          id: state.passport.id,
-          region: state.passport.region,
-          userRoleId: state.passport.userRoleId,
-          authToken: authToken,
-          email: state.passport.email,
-          legacy: state.passport.legacy
+        return Fliplet.App.Storage.get(FLIPLET_LOGIN_STORAGE_KEY).then(function(stored) {
+          return Fliplet.Login.updateUserStorage({
+            id: state.passport.id,
+            region: state.passport.region,
+            userRoleId: state.passport.userRoleId,
+            // Keep the stored SESSION token when there is one: future restore
+            // passes need it to re-attach the passport after the app session
+            // rotates (the copy endpoint resolves its source by session token).
+            authToken: (stored && stored.auth_token) || state.passport.authToken,
+            email: state.passport.email,
+            legacy: state.passport.legacy
+          });
         }).then(function() {
           return state;
         });
@@ -832,6 +944,7 @@ Fliplet.Widget.instance('login', function(data) {
 
         if (typeof navigate === 'object' && typeof navigate.then === 'function') {
           showStart();
+
           return navigate;
         }
       })
