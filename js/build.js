@@ -94,7 +94,11 @@ Fliplet.Widget.instance('login', function(data) {
       callback = callback + stateSep + 'state=' + encodeURIComponent(state);
     }
 
-    var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
+    // authExchange=1 asks the auth page for the state-exchange contract:
+    // the return leg carries a one-shot authState instead of the session
+    // token + user payload, keeping credentials out of URLs (and out of
+    // host access logs, proxy logs, and browser history).
+    var params = ['return=callback', 'callback=' + encodeURIComponent(callback), 'authExchange=1'];
     var appId = Fliplet.Env.get('appId');
 
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
@@ -115,6 +119,7 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
+      url.searchParams.delete('authState');
       url.searchParams.delete('error');
 
       return url.toString();
@@ -136,6 +141,7 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
+      url.searchParams.delete('authState');
       url.searchParams.delete('error');
       window.history.replaceState({}, document.title, url.toString());
     } catch (err) {
@@ -338,17 +344,59 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   /**
-   * Runs on widget mount. If the current URL has token + user query
-   * params, we're on the return leg of a same-tab sign-in — extract
-   * them, validate the state nonce and user shape, clean the URL, and
-   * feed the result into handleAuthSuccess. Returns true if the return
+   * Swaps a one-shot authState (minted by the auth page via
+   * POST /v1/session/authorize/state) for the signed-in session. The
+   * authenticate middleware resolves ?state= into the session's
+   * credentials server-side, so neither the session token nor the user
+   * payload ever transits a URL that reaches logs or history.
+   * @param {String} authState - One-shot AES state token from the return leg
+   * @returns {Promise<Object|null>} { token, user }, or null when the
+   *   state is invalid, expired, or the session can't be resolved
+   */
+  function exchangeAuthState(authState) {
+    if (!authState) {
+      return Promise.resolve(null);
+    }
+
+    return Fliplet.API.request({
+      url: 'v1/session?state=' + encodeURIComponent(authState)
+    }).then(function(response) {
+      var session = response && response.session;
+      var user = session && session.user;
+
+      if (!session || !session.auth_token || !user) {
+        return null;
+      }
+
+      return {
+        token: session.auth_token,
+        user: {
+          id: user.id,
+          email: user.email,
+          userRoleId: user.userRoleId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          legacy: user.legacy
+        }
+      };
+    }).catch(function() {
+      return null;
+    });
+  }
+
+  /**
+   * Runs on widget mount. If the current URL has authState (or legacy
+   * token + user) query params, we're on the return leg of a same-tab
+   * sign-in — validate the state nonce, resolve the auth result (via the
+   * one-shot exchange, or directly on the legacy contract), clean the
+   * URL, and feed it into handleAuthSuccess. Returns true if the return
    * was handled (success OR rejection) so the caller can skip the
    * normal session-restore path.
    */
   function handleSameTabReturn() {
     var q = Fliplet.Navigate.query;
 
-    if (!q || !q.token) return false;
+    if (!q || (!q.token && !q.authState)) return false;
 
     // Always consume the stored state, even on rejection — burning the
     // nonce on first arrival prevents replay if an attacker manages to
@@ -368,6 +416,27 @@ Fliplet.Widget.instance('login', function(data) {
       return reject('state nonce missing or mismatch');
     }
 
+    // Preferred contract: one-shot state exchange — no credentials in the URL.
+    if (q.authState) {
+      var authState = q.authState;
+
+      cleanAuthReturnParamsFromUrl();
+
+      exchangeAuthState(authState).then(function(result) {
+        if (!result || !isValidUserShape(result.user)) {
+          reject('authState exchange failed or returned an invalid user');
+
+          return;
+        }
+
+        handleAuthSuccess(result);
+      });
+
+      return true;
+    }
+
+    // Legacy contract (token + user in the URL) — kept for rollout skew
+    // between the widget and the auth page.
     var user = null;
 
     try {
@@ -399,7 +468,7 @@ Fliplet.Widget.instance('login', function(data) {
     var state = generateAuthState();
     var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
-    var pendingAuthResult = null;
+    var pendingAuth = null;
     var fallbackTimer = null;
 
     // Pre-parse the expected callback URL once for strict origin +
@@ -459,8 +528,9 @@ Fliplet.Widget.instance('login', function(data) {
       if (parsed.origin !== expectedOrigin || parsed.pathname !== expectedPathname) return;
 
       var token = parsed.searchParams.get('token');
+      var authState = parsed.searchParams.get('authState');
 
-      if (!token) return;
+      if (!token && !authState) return;
 
       iabHandled = true;
 
@@ -485,37 +555,71 @@ Fliplet.Widget.instance('login', function(data) {
         return rejectIab('state nonce missing or mismatch');
       }
 
-      var user = null;
-
-      try {
-        user = JSON.parse(parsed.searchParams.get('user') || 'null');
-      } catch (err) {
-        return rejectIab('user payload failed to parse');
-      }
-
-      if (!isValidUserShape(user)) {
-        return rejectIab('user payload failed shape validation');
-      }
-
       // Don't run the success path yet: on iOS a WebView navigation issued
       // while the IAB dismissal transition is in flight gets swallowed by
       // the native view-controller transition, so Navigate.to at the end of
-      // handleAuthSuccess would silently do nothing. Stash the result and
-      // let onExit (which Cordova fires after close() completes on both
-      // platforms) kick it off once the IAB is fully gone.
-      pendingAuthResult = { token: token, user: user };
+      // handleAuthSuccess would silently do nothing. Resolve the auth result
+      // as a promise (the exchange is an XHR from the app WebView) and let
+      // onExit — which Cordova fires after close() completes on both
+      // platforms — consume it once the IAB is fully gone.
+      if (authState) {
+        // Preferred contract: one-shot state exchange — no credentials in
+        // the sentinel URL.
+        pendingAuth = exchangeAuthState(authState).then(function(result) {
+          if (!result || !isValidUserShape(result.user)) {
+            rejectIab('authState exchange failed or returned an invalid user');
+
+            return null;
+          }
+
+          return result;
+        });
+      } else {
+        // Legacy contract (token + user in the URL) — kept for rollout skew
+        // between the widget and the auth page.
+        var user = null;
+
+        try {
+          user = JSON.parse(parsed.searchParams.get('user') || 'null');
+        } catch (err) {
+          return rejectIab('user payload failed to parse');
+        }
+
+        if (!isValidUserShape(user)) {
+          return rejectIab('user payload failed shape validation');
+        }
+
+        pendingAuth = Promise.resolve({ token: token, user: user });
+      }
 
       // Safety net if a plugin quirk drops the exit event: run the success
       // path anyway rather than stranding a completed sign-in. onExit clears
       // this timer on the normal path.
-      fallbackTimer = setTimeout(function() {
-        if (pendingAuthResult) {
-          var authResult = pendingAuthResult;
+      fallbackTimer = setTimeout(runPendingAuth, 3000);
+    }
 
-          pendingAuthResult = null;
-          handleAuthSuccess(authResult);
+    /**
+     * Consumes the pending auth result exactly once (whichever of onExit or
+     * the fallback timer gets there first) and runs the success path.
+     * @returns {Boolean} TRUE if a pending result was consumed
+     */
+    function runPendingAuth() {
+      if (!pendingAuth) {
+        return false;
+      }
+
+      var auth = pendingAuth;
+
+      pendingAuth = null;
+
+      auth.then(function(result) {
+        // A null result means the exchange already surfaced its rejection.
+        if (result) {
+          handleAuthSuccess(result);
         }
-      }, 3000);
+      });
+
+      return true;
     }
 
     function onLoadStart(event) {
@@ -546,12 +650,7 @@ Fliplet.Widget.instance('login', function(data) {
 
       // Success path: the IAB is fully dismissed now, so the navigation at
       // the end of handleAuthSuccess can't be swallowed by the transition.
-      if (pendingAuthResult) {
-        var authResult = pendingAuthResult;
-
-        pendingAuthResult = null;
-        handleAuthSuccess(authResult);
-
+      if (runPendingAuth()) {
         return;
       }
 
