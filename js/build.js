@@ -28,7 +28,9 @@ Fliplet.Widget.instance('login', function(data) {
   });
 
   if (Fliplet.Navigate.query.error) {
-    _this.$container.find('.login-error-holder').html(Fliplet.Navigate.query.error).addClass('show');
+    // .text(), never .html(): the error is a URL query param, so .html()
+    // would be a reflected XSS sink on every app's login screen.
+    _this.$container.find('.login-error-holder').text(Fliplet.Navigate.query.error).addClass('show');
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -398,6 +400,7 @@ Fliplet.Widget.instance('login', function(data) {
     var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
     var pendingAuthResult = null;
+    var fallbackTimer = null;
 
     // Pre-parse the expected callback URL once for strict origin +
     // pathname comparison. A prefix-match (`indexOf(...) === 0`) would
@@ -503,8 +506,9 @@ Fliplet.Widget.instance('login', function(data) {
       pendingAuthResult = { token: token, user: user };
 
       // Safety net if a plugin quirk drops the exit event: run the success
-      // path anyway rather than stranding a completed sign-in.
-      setTimeout(function() {
+      // path anyway rather than stranding a completed sign-in. onExit clears
+      // this timer on the normal path.
+      fallbackTimer = setTimeout(function() {
         if (pendingAuthResult) {
           var authResult = pendingAuthResult;
 
@@ -534,6 +538,11 @@ Fliplet.Widget.instance('login', function(data) {
       browser.removeEventListener('loadstart', onLoadStart);
       browser.removeEventListener('loadstop', onLoadStop);
       browser.removeEventListener('exit', onExit);
+
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
 
       // Success path: the IAB is fully dismissed now, so the navigation at
       // the end of handleAuthSuccess can't be swallowed by the transition.
@@ -657,7 +666,12 @@ Fliplet.Widget.instance('login', function(data) {
 
       var errorMessage = Fliplet.parseError(err, T('widgets.login.fliplet.errors.unableLogin'));
 
-      _this.$container.find('.login-error-holder').html('<p>' + errorMessage + '</p>').addClass('show');
+      // Build the element and set content via .text() — parseError can echo
+      // server-supplied strings, so .html() would be an injection sink.
+      _this.$container.find('.login-error-holder')
+        .empty()
+        .append($('<p>').text(errorMessage))
+        .addClass('show');
       hideLoadingState();
     });
   }
