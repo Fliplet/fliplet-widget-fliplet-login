@@ -14,7 +14,7 @@
     <button
       type="button"
       class="btn btn-primary fliplet-login-button"
-      data-translate="widgets.login.fliplet.actions.signIn"
+      {{#unless buttonLabel}}data-translate="widgets.login.fliplet.actions.signIn"{{/unless}}
     >
       {{#if buttonLabel}}{{buttonLabel}}{{else}}Sign in{{/if}}
     </button>
