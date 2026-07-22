@@ -651,11 +651,15 @@ Fliplet.Widget.instance('login', function(data) {
         userProfile: authResult.user
       });
     }).then(function() {
-      // Pass authResult.user, not the { token, user } wrapper: the account-setup
-      // flags (2FA link, agreements, profile, password-must-change) live on the
-      // user object, and userMustSetupAccount reads them off the top level — the
-      // wrapper hides them, silently skipping required setup.
-      return Fliplet.Login.validateAccount({ data: authResult.user });
+      // No pre-fetched data: validateAccount treats options.data as the
+      // getUserData envelope, so passing the callback's bare user made
+      // verifyUserForDevEnvApp see no user (early-returning past the admin
+      // gate) AND still missed the setup flags (the callback payload doesn't
+      // carry them). updateUserStorage already ran above with the session
+      // token, so getUserData() now fetches /v1/user and returns the real
+      // envelope — the gate runs and the flags are populated. Matches the
+      // restore path.
+      return Fliplet.Login.validateAccount();
     }).then(function() {
       Fliplet.Analytics.trackEvent({
         category: 'login_fliplet',
