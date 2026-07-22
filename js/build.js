@@ -89,9 +89,17 @@ Fliplet.Widget.instance('login', function(data) {
     // state survives the redirect and lets us verify on return that this
     // is a callback for a sign-in we actually initiated.
     if (state) {
-      var stateSep = callback.indexOf('?') === -1 ? '?' : '&';
+      // Insert the param BEFORE any #fragment. On a hash-routed app
+      // (`https://app/page#/route`) appending to the end would push `state`
+      // into the fragment, and the API then appends `token`/`user` there too
+      // — none of which reach Fliplet.Navigate.query (it reads the query
+      // string, not the fragment), breaking the same-tab return.
+      var hashAt = callback.indexOf('#');
+      var cbBase = hashAt === -1 ? callback : callback.slice(0, hashAt);
+      var cbFrag = hashAt === -1 ? '' : callback.slice(hashAt);
+      var stateSep = cbBase.indexOf('?') === -1 ? '?' : '&';
 
-      callback = callback + stateSep + 'state=' + encodeURIComponent(state);
+      callback = cbBase + stateSep + 'state=' + encodeURIComponent(state) + cbFrag;
     }
 
     var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
@@ -482,6 +490,8 @@ Fliplet.Widget.instance('login', function(data) {
         // eslint-disable-next-line no-console -- security trace: state/shape rejections need to surface for incident triage
         console.warn('[Fliplet.Login] IAB return rejected:', reason);
         Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+        // No showStart() here (unlike the same-tab reject): the IAB path never
+        // hides the form, so hideLoadingState() is enough.
         hideLoadingState();
       }
 
@@ -641,7 +651,11 @@ Fliplet.Widget.instance('login', function(data) {
         userProfile: authResult.user
       });
     }).then(function() {
-      return Fliplet.Login.validateAccount({ data: authResult });
+      // Pass authResult.user, not the { token, user } wrapper: the account-setup
+      // flags (2FA link, agreements, profile, password-must-change) live on the
+      // user object, and userMustSetupAccount reads them off the top level — the
+      // wrapper hides them, silently skipping required setup.
+      return Fliplet.Login.validateAccount({ data: authResult.user });
     }).then(function() {
       Fliplet.Analytics.trackEvent({
         category: 'login_fliplet',
@@ -941,7 +955,11 @@ Fliplet.Widget.instance('login', function(data) {
           return state;
         }
 
-        return Fliplet.Login.validateAccount({ updateUserStorage: true }).then(function() {
+        // Validate WITHOUT updateUserStorage: initSession already wrote
+        // storage above with the session token, and updateUserStorage here
+        // would overwrite it with /v1/user's bare user token (no session,
+        // no passport) — leaving the next native restore signed out.
+        return Fliplet.Login.validateAccount().then(function() {
           return state;
         });
       })
