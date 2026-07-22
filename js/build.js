@@ -360,6 +360,10 @@ Fliplet.Widget.instance('login', function(data) {
       console.warn('[Fliplet.Login] same-tab return rejected:', reason);
       cleanAuthReturnParamsFromUrl();
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+      // Reveal the form so the user can retry: handleSameTabReturn makes
+      // init() return before initSession() would show it, so without this
+      // a failed return leaves the loader up indefinitely.
+      showStart();
 
       return true;
     }
@@ -596,6 +600,9 @@ Fliplet.Widget.instance('login', function(data) {
       });
       Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
       hideLoadingState();
+      // Same-tab return path leaves the form hidden until showStart(); no-op
+      // in popup/IAB contexts where it's already visible.
+      showStart();
 
       return;
     }
@@ -673,6 +680,9 @@ Fliplet.Widget.instance('login', function(data) {
         .append($('<p>').text(errorMessage))
         .addClass('show');
       hideLoadingState();
+      // Same-tab return path leaves the form hidden until showStart(); no-op
+      // in popup/IAB contexts where it's already visible.
+      showStart();
     });
   }
 
