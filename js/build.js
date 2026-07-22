@@ -120,6 +120,7 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('user');
       url.searchParams.delete('state');
       url.searchParams.delete('authState');
+      url.searchParams.delete('authHost');
       url.searchParams.delete('error');
 
       return url.toString();
@@ -142,6 +143,7 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('user');
       url.searchParams.delete('state');
       url.searchParams.delete('authState');
+      url.searchParams.delete('authHost');
       url.searchParams.delete('error');
       window.history.replaceState({}, document.title, url.toString());
     } catch (err) {
@@ -227,14 +229,14 @@ Fliplet.Widget.instance('login', function(data) {
       && /^token-[^@]*@fliplet\.com$/i.test(user.email);
   }
 
-  // Masks token / user / state query params before logging the URL,
-  // so the token doesn't surface in remote log aggregators, support-
-  // ticket screenshots, or screen recordings.
+  // Masks token / user / state / authState query params before logging
+  // the URL, so credentials don't surface in remote log aggregators,
+  // support-ticket screenshots, or screen recordings.
   function maskUrlForLogging(url) {
     try {
       var u = new URL(url);
 
-      ['token', 'user', 'state'].forEach(function(key) {
+      ['token', 'user', 'state', 'authState'].forEach(function(key) {
         if (u.searchParams.has(key)) u.searchParams.set(key, '<redacted>');
       });
 
@@ -349,18 +351,28 @@ Fliplet.Widget.instance('login', function(data) {
    * authenticate middleware resolves ?state= into the session's
    * credentials server-side, so neither the session token nor the user
    * payload ever transits a URL that reaches logs or history.
-   * @param {String} authState - One-shot AES state token from the return leg
+   * @param {String} authState - One-shot state token from the return leg
+   * @param {String} [authHost] - Host that minted the token. The token is
+   *   single-use Redis and region-local, so it must be redeemed on its
+   *   issuing host — which for a cross-region user differs from this app's
+   *   API host. Absent only on rollout skew (old API); falls back to the
+   *   app's own API host, i.e. the pre-existing same-region behaviour.
    * @returns {Promise<Object|null>} { token, user }, or null when the
    *   state is invalid, expired, or the session can't be resolved
    */
-  function exchangeAuthState(authState) {
+  function exchangeAuthState(authState, authHost) {
     if (!authState) {
       return Promise.resolve(null);
     }
 
-    return Fliplet.API.request({
-      url: 'v1/session?state=' + encodeURIComponent(authState)
-    }).then(function(response) {
+    // Absolute URL when authHost is known (Fliplet.API.request only
+    // prepends the app host to relative paths); relative otherwise.
+    var path = 'v1/session?state=' + encodeURIComponent(authState);
+    var url = authHost
+      ? String(authHost).replace(/\/+$/, '') + '/' + path
+      : path;
+
+    return Fliplet.API.request({ url: url }).then(function(response) {
       var session = response && response.session;
       var user = session && session.user;
 
@@ -419,10 +431,11 @@ Fliplet.Widget.instance('login', function(data) {
     // Preferred contract: one-shot state exchange — no credentials in the URL.
     if (q.authState) {
       var authState = q.authState;
+      var authHost = q.authHost;
 
       cleanAuthReturnParamsFromUrl();
 
-      exchangeAuthState(authState).then(function(result) {
+      exchangeAuthState(authState, authHost).then(function(result) {
         if (!result || !isValidUserShape(result.user)) {
           reject('authState exchange failed or returned an invalid user');
 
@@ -529,6 +542,7 @@ Fliplet.Widget.instance('login', function(data) {
 
       var token = parsed.searchParams.get('token');
       var authState = parsed.searchParams.get('authState');
+      var authHost = parsed.searchParams.get('authHost');
 
       if (!token && !authState) return;
 
@@ -565,7 +579,7 @@ Fliplet.Widget.instance('login', function(data) {
       if (authState) {
         // Preferred contract: one-shot state exchange — no credentials in
         // the sentinel URL.
-        pendingAuth = exchangeAuthState(authState).then(function(result) {
+        pendingAuth = exchangeAuthState(authState, authHost).then(function(result) {
           if (!result || !isValidUserShape(result.user)) {
             rejectIab('authState exchange failed or returned an invalid user');
 
