@@ -80,6 +80,20 @@
       return Fliplet.App.Storage.get(storageName).then(function(response) {
         storage = response || {};
 
+        if (!storage.auth_token) {
+          // No stored user session — stop before the request below. With an
+          // undefined Auth-token header it would authenticate with the app's
+          // ambient app-token credentials and return the appToken user, which
+          // the Dev Environment admin gate then "logs out": rotating the app
+          // session (destroying any freshly attached login passport) and
+          // re-wiping the already-empty storage in a self-perpetuating cycle.
+          var error = new Error('No stored user session');
+
+          error.code = 'NO_STORED_SESSION';
+
+          return Promise.reject(error);
+        }
+
         return Fliplet.API.request({
           url: 'v1/user',
           headers: {
