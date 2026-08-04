@@ -256,16 +256,38 @@ Fliplet.Widget.instance('login', function(data) {
 
     try {
       var u = new URL(value);
+      var appOrigin = getApiOrigin();
+      var app = new URL(appOrigin);
 
       // Same origin as the app's own API host — trusted by definition.
-      if (u.origin === getApiOrigin()) return u.origin;
+      if (u.origin === appOrigin) return u.origin;
 
-      // Anything else must be HTTPS and Fliplet-owned. Matching on hostname
-      // (not the raw string) means "https://evil.com/?x=.fliplet.com" and
-      // "https://fliplet.com.evil.com" both fail.
-      if (u.protocol !== 'https:') return null;
+      // Production regional hosts (us-api.fliplet.com, ca-api.fliplet.com…).
+      // Matching on the parsed hostname (not the raw string) means
+      // "https://evil.com/?x=.fliplet.com" and "https://fliplet.com.evil.com"
+      // both fail.
+      if (u.protocol === 'https:' && /(^|\.)fliplet\.com$/i.test(u.hostname)) {
+        return u.origin;
+      }
 
-      return /(^|\.)fliplet\.com$/i.test(u.hostname) ? u.origin : null;
+      // Regional siblings of the app's own API host, for dev environments and
+      // local stacks whose regions are NOT fliplet.com hosts — e.g.
+      // us.api.fliplet.test alongside api.fliplet.test. Without this the US
+      // host is rejected off-production and the exchange silently falls back
+      // to the app's own (wrong-region) host, which masks cross-region bugs
+      // in exactly the environments used to test for them.
+      //
+      // The permitted suffix is derived from the app's OWN api host and
+      // requires a full label boundary, so a crafted authHost cannot widen it,
+      // and it never falls back to a registrable-domain guess (which would
+      // wrongly allow any *.co.uk for a custom domain on a public suffix).
+      if (u.protocol === app.protocol
+        && u.hostname.length > app.hostname.length
+        && u.hostname.slice(-(app.hostname.length + 1)) === '.' + app.hostname) {
+        return u.origin;
+      }
+
+      return null;
     } catch (err) {
       return null;
     }
