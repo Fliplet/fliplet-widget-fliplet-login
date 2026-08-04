@@ -237,14 +237,50 @@ Fliplet.Widget.instance('login', function(data) {
       && /^token-[^@]*@fliplet\.com$/i.test(user.email);
   }
 
-  // Masks token / user / state / authState query params before logging
-  // the URL, so credentials don't surface in remote log aggregators,
-  // support-ticket screenshots, or screen recordings.
+  // Validates `authHost` before it is ever used as a request target.
+  //
+  // On the same-tab leg authHost arrives on the page query string, which the
+  // user (or anyone who can get them to open a crafted link) controls. The
+  // exchange sends the session's Authorization header to that host and feeds
+  // the response straight into handleAuthSuccess — which shape-validates the
+  // user but cannot validate its authenticity. An unvalidated host therefore
+  // buys an attacker both credential exfiltration and session fixation, so
+  // anything not provably Fliplet-owned is discarded and the caller falls
+  // back to the app's own API host (same-region behaviour).
+  //
+  // The app's own API origin is always accepted: it is the fallback target
+  // regardless, and on dev environments / local stacks it is not a
+  // fliplet.com host (e.g. https://api.fliplet.test).
+  function safeAuthHost(value) {
+    if (!value) return null;
+
+    try {
+      var u = new URL(value);
+
+      // Same origin as the app's own API host — trusted by definition.
+      if (u.origin === getApiOrigin()) return u.origin;
+
+      // Anything else must be HTTPS and Fliplet-owned. Matching on hostname
+      // (not the raw string) means "https://evil.com/?x=.fliplet.com" and
+      // "https://fliplet.com.evil.com" both fail.
+      if (u.protocol !== 'https:') return null;
+
+      return /(^|\.)fliplet\.com$/i.test(u.hostname) ? u.origin : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Masks token / user / state / authState / authHost query params before
+  // logging the URL, so credentials don't surface in remote log aggregators,
+  // support-ticket screenshots, or screen recordings. authHost is not itself
+  // a credential, but it is masked alongside them so a log line can't be used
+  // to confirm which region a given user's session lives in.
   function maskUrlForLogging(url) {
     try {
       var u = new URL(url);
 
-      ['token', 'user', 'state', 'authState'].forEach(function(key) {
+      ['token', 'user', 'state', 'authState', 'authHost'].forEach(function(key) {
         if (u.searchParams.has(key)) u.searchParams.set(key, '<redacted>');
       });
 
@@ -373,14 +409,21 @@ Fliplet.Widget.instance('login', function(data) {
       return Promise.resolve(null);
     }
 
-    // Absolute URL when authHost is known (Fliplet.API.request only
-    // prepends the app host to relative paths); relative otherwise.
-    var path = 'v1/session?state=' + encodeURIComponent(authState);
-    var url = authHost
-      ? String(authHost).replace(/\/+$/, '') + '/' + path
-      : path;
+    // Retarget via options.apiUrl — NOT by building an absolute options.url.
+    // Fliplet.API.request prepends the API base to *every* url, absolute ones
+    // included (core.js `options.url = apiUrl + options.url`), so an absolute
+    // URL yields https://api.fliplet.com/https://us-api.fliplet.com/... → 404.
+    // options.apiUrl replaces the base instead, which is the supported retarget
+    // (added in DEV-667). Cores predating it ignore the option and fall back to
+    // the app's own host — same-region behaviour, not a broken request.
+    var opts = { url: 'v1/session?state=' + encodeURIComponent(authState) };
+    var safeHost = safeAuthHost(authHost);
 
-    return Fliplet.API.request({ url: url }).then(function(response) {
+    if (safeHost) {
+      opts.apiUrl = safeHost;
+    }
+
+    return Fliplet.API.request(opts).then(function(response) {
       var session = response && response.session;
       var user = session && session.user;
 
