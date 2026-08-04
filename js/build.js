@@ -416,12 +416,18 @@ Fliplet.Widget.instance('login', function(data) {
     // options.apiUrl replaces the base instead, which is the supported retarget
     // (added in DEV-667). Cores predating it ignore the option and fall back to
     // the app's own host — same-region behaviour, not a broken request.
-    var opts = { url: 'v1/session?state=' + encodeURIComponent(authState) };
-    var safeHost = safeAuthHost(authHost);
-
-    if (safeHost) {
-      opts.apiUrl = safeHost;
-    }
+    //
+    // apiUrl is set unconditionally. Leaving it off does NOT fall back to the
+    // canonical API host: Fliplet.API.request's default base is
+    // Fliplet.Env.get('apiUrl'), which inside a published web app is the
+    // apps-host-proxied URL (https://apps.fliplet.com/) rather than the API
+    // host — the same distinction getApiHost() exists to paper over. Pinning it
+    // to getApiOrigin() keeps the exchange on the host that serves these routes
+    // and matches where the login URL itself was sent.
+    var opts = {
+      url: 'v1/session?state=' + encodeURIComponent(authState),
+      apiUrl: safeAuthHost(authHost) || getApiOrigin()
+    };
 
     return Fliplet.API.request(opts).then(function(response) {
       var session = response && response.session;
