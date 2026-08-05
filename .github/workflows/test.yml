@@ -1,0 +1,34 @@
+# The widget's only automated check. safe-auth-host.js is the allowlist that
+# decides where the sign-in exchange sends its credential, and the absence of
+# that control is what caused the DEV-1572 revert — so its tests should not
+# depend on someone remembering to run npm test.
+#
+# node --test is built in: no dependency install, nothing to keep in sync.
+name: Test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run tests
+        run: npm test
+
+      - name: Syntax-check the shipped widget assets
+        # These load in a browser, never in Node, so they are not covered by
+        # the test run above. --check is the cheapest guard against a parse
+        # error reaching a published app.
+        run: |
+          for f in js/*.js; do
+            node --check "$f"
+          done

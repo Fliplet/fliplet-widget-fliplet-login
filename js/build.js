@@ -34,9 +34,17 @@ Fliplet.Widget.instance('login', function(data) {
   var initialReturnError = readAuthReturnParams().error;
 
   if (initialReturnError) {
-    // .text(), never .html(): the error is a URL query param, so .html()
-    // would be a reflected XSS sink on every app's login screen.
-    _this.$container.find('.login-error-holder').text(initialReturnError).addClass('show');
+    // Show the localised string, NOT the server's — this runs at mount, before
+    // any nonce has been validated, and ?error= is reachable by anyone who can
+    // get the user to open a link. .text() means this was never an XSS sink,
+    // but rendering an attacker-chosen string into the app's own login error
+    // area is still a social-engineering primitive ("Your account is locked,
+    // call 0800-…"). handleSameTabReturn upgrades this to the real message
+    // once the nonce matches; the raw value is logged either way for triage.
+    // The IAB leg already takes this position — the two are now symmetric.
+    // eslint-disable-next-line no-console -- security trace: unauthenticated error params need to surface for incident triage
+    console.warn('[Fliplet.Login] return carried an error param:', initialReturnError);
+    showLoginError(genericLoginError());
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -53,6 +61,28 @@ Fliplet.Widget.instance('login', function(data) {
 
       scheduleCheck();
     }, 500);
+  }
+
+  // .text(), never .html(): these strings can originate from a URL query
+  // param, so .html() would be a reflected XSS sink on every app's login
+  // screen.
+  function showLoginError(message) {
+    _this.$container.find('.login-error-holder').text(message).addClass('show');
+  }
+
+  // T is a runtime global rather than a module import, and this can be called
+  // at mount before the translation layer is guaranteed ready — fall back to
+  // the literal rather than throwing on the sign-in path.
+  function genericLoginError() {
+    if (typeof T === 'function') {
+      try {
+        return T('widgets.login.fliplet.errors.unableLogin');
+      } catch (err) {
+        // fall through
+      }
+    }
+
+    return 'Sign-in could not be completed. Please try again.';
   }
 
   function showStart() {
@@ -579,6 +609,9 @@ Fliplet.Widget.instance('login', function(data) {
     if (q.error) {
       // eslint-disable-next-line no-console -- security trace: failed returns need to surface for incident triage
       console.warn('[Fliplet.Login] same-tab return carried an error:', q.error);
+      // The nonce matched, so this really is our own auth page's message and
+      // can replace the generic one rendered at mount.
+      showLoginError(q.error);
       cleanAuthReturnParamsFromUrl();
       showStart();
 
