@@ -108,15 +108,17 @@ test('accepts regional siblings of a non-fliplet.com app host', () => {
   );
 });
 
-test('sibling rule never applies on production, so CDN origins stay out', () => {
-  // cdn.api.fliplet.com / us.cdn.api.fliplet.com / ca.cdn.api.fliplet.com are
-  // the real CDN hosts in config/production.json and are genuine subdomains of
-  // api.fliplet.com. A bare suffix check would hand them the Authorization
-  // header, undoing the narrowness of the regional-host rule above.
-  // Every api.fliplet.com host that appears in config/*.json, split by whether
-  // it is a redemption target. cdn.api.fliplet.com is a SINGLE label under
-  // api.fliplet.com — structurally identical to a region — so it passes the
-  // regional-host rule unless explicitly excluded.
+// Named for what it actually guards. Two independent rules are involved: the
+// CDN exclusion lives on the production regional rule (cdn is a single label,
+// so the sibling rule never even sees it), while the depth limit comes from
+// the sibling rule being disabled on fliplet.com. Either one alone leaves a
+// hole, so both are asserted together.
+test('production allowlist excludes CDN origins and arbitrary subdomain depth', () => {
+  // The CDN hosts in config/production.json are genuine subdomains of
+  // api.fliplet.com, and cdn.api.fliplet.com is a SINGLE label under it —
+  // structurally identical to a region — so it passes the regional-host rule
+  // unless explicitly excluded. A bare suffix check would hand all of them the
+  // Authorization header, undoing the narrowness of that rule.
   const cdnHosts = [
     'https://cdn.api.fliplet.com',
     'https://cdn-staging.api.fliplet.com',
@@ -130,12 +132,16 @@ test('sibling rule never applies on production, so CDN origins stay out', () => 
     assert.strictEqual(safeAuthHost(host, 'https://us.api.fliplet.com'), null, host);
   }
 
-  for (const host of ['https://anything.api.fliplet.com', 'https://a.b.c.api.fliplet.com']) {
-    // Arbitrary single labels are still accepted by the regional rule by
-    // design (new regions must work without a code change); arbitrary DEPTH
-    // is not.
-    assert.strictEqual(safeAuthHost('https://a.b.c.api.fliplet.com', PROD), null, host);
-  }
+  // Depth is what the exclusion is about, NOT label content. An arbitrary
+  // single label is accepted by design so a new region works without a code
+  // change — asserted explicitly here so nobody "tightens" it by mistake.
+  // These two are deliberately separate assertions rather than a loop: they
+  // have opposite expected values.
+  assert.strictEqual(
+    safeAuthHost('https://anything.api.fliplet.com', PROD),
+    'https://anything.api.fliplet.com'
+  );
+  assert.strictEqual(safeAuthHost('https://a.b.c.api.fliplet.com', PROD), null);
 
   // The real API hosts must all survive the exclusion.
   for (const host of ['https://staging.api.fliplet.com', 'https://staging-us.api.fliplet.com', 'https://development.api.fliplet.com']) {
