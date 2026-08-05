@@ -617,8 +617,13 @@ Fliplet.Widget.instance('login', function(data) {
       var token = parsed.searchParams.get('token');
       var authState = parsed.searchParams.get('authState');
       var authHost = parsed.searchParams.get('authHost');
+      // A failed mint on the auth page returns to this same callback carrying
+      // only error+state. Without it in this guard the return is never marked
+      // handled: the IAB stays open on the callback page and the app sits
+      // behind it waiting for a result that never arrives.
+      var error = parsed.searchParams.get('error');
 
-      if (!token && !authState) return;
+      if (!token && !authState && !error) return;
 
       iabHandled = true;
 
@@ -643,6 +648,14 @@ Fliplet.Widget.instance('login', function(data) {
 
       if (!expectedState || !returnedState || returnedState !== expectedState) {
         return rejectIab('state nonce missing or mismatch');
+      }
+
+      // Checked after the nonce so a crafted ?error= link can't drive this
+      // path without a matching nonce. The server's message is logged rather
+      // than shown: it arrives via the URL, and the localised toast already
+      // says the same thing without rendering text from the query string.
+      if (error) {
+        return rejectIab('auth page reported an error: ' + error);
       }
 
       // Don't run the success path yet: on iOS a WebView navigation issued
