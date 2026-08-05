@@ -35,6 +35,7 @@
     ],
     "assets": [
       "css/lib/email_validation_build.css",
+      "js/safe-auth-host.js",
       "js/build.js",
       "css/build.css"
     ]

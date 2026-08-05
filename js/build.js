@@ -238,60 +238,9 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   // Validates `authHost` before it is ever used as a request target.
-  //
-  // On the same-tab leg authHost arrives on the page query string, which the
-  // user (or anyone who can get them to open a crafted link) controls. The
-  // exchange sends the session's Authorization header to that host and feeds
-  // the response straight into handleAuthSuccess — which shape-validates the
-  // user but cannot validate its authenticity. An unvalidated host therefore
-  // buys an attacker both credential exfiltration and session fixation, so
-  // anything not provably Fliplet-owned is discarded and the caller falls
-  // back to the app's own API host (same-region behaviour).
-  //
-  // The app's own API origin is always accepted: it is the fallback target
-  // regardless, and on dev environments / local stacks it is not a
-  // fliplet.com host (e.g. https://api.fliplet.test).
-  function safeAuthHost(value) {
-    if (!value) return null;
-
-    try {
-      var u = new URL(value);
-      var appOrigin = getApiOrigin();
-      var app = new URL(appOrigin);
-
-      // Same origin as the app's own API host — trusted by definition.
-      if (u.origin === appOrigin) return u.origin;
-
-      // Production regional hosts (us-api.fliplet.com, ca-api.fliplet.com…).
-      // Matching on the parsed hostname (not the raw string) means
-      // "https://evil.com/?x=.fliplet.com" and "https://fliplet.com.evil.com"
-      // both fail.
-      if (u.protocol === 'https:' && /(^|\.)fliplet\.com$/i.test(u.hostname)) {
-        return u.origin;
-      }
-
-      // Regional siblings of the app's own API host, for dev environments and
-      // local stacks whose regions are NOT fliplet.com hosts — e.g.
-      // us.api.fliplet.test alongside api.fliplet.test. Without this the US
-      // host is rejected off-production and the exchange silently falls back
-      // to the app's own (wrong-region) host, which masks cross-region bugs
-      // in exactly the environments used to test for them.
-      //
-      // The permitted suffix is derived from the app's OWN api host and
-      // requires a full label boundary, so a crafted authHost cannot widen it,
-      // and it never falls back to a registrable-domain guess (which would
-      // wrongly allow any *.co.uk for a custom domain on a public suffix).
-      if (u.protocol === app.protocol
-        && u.hostname.length > app.hostname.length
-        && u.hostname.slice(-(app.hostname.length + 1)) === '.' + app.hostname) {
-        return u.origin;
-      }
-
-      return null;
-    } catch (err) {
-      return null;
-    }
-  }
+  // Implementation and rationale live in js/safe-auth-host.js, which is loaded
+  // ahead of this file by widget.json so it can also be unit tested in Node.
+  var safeAuthHost = window.FlipletLoginAuthHost.safeAuthHost;
 
   // Masks token / user / state / authState / authHost query params before
   // logging the URL, so credentials don't surface in remote log aggregators,
@@ -446,9 +395,23 @@ Fliplet.Widget.instance('login', function(data) {
     // host — the same distinction getApiHost() exists to paper over. Pinning it
     // to getApiOrigin() keeps the exchange on the host that serves these routes
     // and matches where the login URL itself was sent.
+    var appOrigin = getApiOrigin();
+
     var opts = {
       url: 'v1/session?state=' + encodeURIComponent(authState),
-      apiUrl: safeAuthHost(authHost) || getApiOrigin()
+      apiUrl: safeAuthHost(authHost, appOrigin) || appOrigin,
+      // The state token must be the ONLY credential this call presents.
+      //
+      // core.js fills in Fliplet.User.getAuthToken() whenever Auth-token is
+      // unset, and the API's loadUser keeps that ambient token when the state
+      // fails to resolve (expired, already consumed, Redis blip) instead of
+      // rejecting. The exchange would then return 200 with the device's
+      // PREVIOUS session and sign the user in as the wrong identity, silently
+      // — the exact opposite of what a failed exchange should do.
+      //
+      // Sending a deliberately invalid sentinel suppresses the fill-in, so an
+      // unresolvable state has nothing to fall back to and correctly 401s.
+      headers: { 'Auth-token': 'state' }
     };
 
     return Fliplet.API.request(opts).then(function(response) {
@@ -459,16 +422,17 @@ Fliplet.Widget.instance('login', function(data) {
         return null;
       }
 
+      // Pass the user through whole rather than hand-picking fields. It is
+      // already the server's own public projection (models/session.js
+      // getPublic() omits auth_token), and it is the same object the legacy
+      // token+user contract puts in the callback URL — so every path feeds
+      // Fliplet.Hooks.run('login') an identically shaped userProfile.
+      // Reducing it here silently dropped fields for deployed web/native
+      // sign-ins only, which is exactly the kind of divergence a public hook
+      // must not have.
       return {
         token: session.auth_token,
-        user: {
-          id: user.id,
-          email: user.email,
-          userRoleId: user.userRoleId,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          legacy: user.legacy
-        }
+        user: user
       };
     }).catch(function() {
       return null;
@@ -526,6 +490,11 @@ Fliplet.Widget.instance('login', function(data) {
         }
 
         handleAuthSuccess(result);
+      }).catch(function() {
+        // exchangeAuthState swallows its own request failure, so reaching here
+        // means handleAuthSuccess threw. Without this the rejection is
+        // unhandled: no toast, no showStart(), loader up indefinitely.
+        reject('exchange threw');
       });
 
       return true;
