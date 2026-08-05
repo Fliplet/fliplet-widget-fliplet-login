@@ -490,8 +490,11 @@ Fliplet.Widget.instance('login', function(data) {
       xhr.onload = function() {
         var session;
 
+        var response;
+
         try {
-          session = JSON.parse(xhr.responseText).session;
+          response = JSON.parse(xhr.responseText);
+          session = response.session;
         } catch (err) {
           return fail('response was not JSON', xhr.status);
         }
@@ -500,16 +503,20 @@ Fliplet.Widget.instance('login', function(data) {
           return fail('unexpected response shape', xhr.status);
         }
 
-        // Pass the user through whole rather than hand-picking fields — the
-        // earlier six-field copy dropped data for deployed web/native sign-ins
-        // only. Note this is the session's user (models/session.js getPublic(),
-        // which omits auth_token); it is NOT identical to the profile the
-        // legacy token+user contract carries, which the login route enriches
-        // with host/region/organization/isFirstLogin/mustVerifyEmail and setup
-        // status. Public `login` hook consumers therefore still see a smaller
-        // object on this path — normalising the two shapes needs its own
-        // decision, since narrowing the legacy one would break consumers.
-        resolve({ token: session.auth_token, user: session.user });
+        // Prefer the enriched profile the API builds for a state redemption
+        // (host, region, organization, policy, setup status, isFirstLogin,
+        // mustVerifyEmail), so Fliplet.Hooks.run('login') gets the same shape
+        // the legacy token+user contract carried. It is built server-side from
+        // the authenticated user, not echoed back from the mint.
+        //
+        // Falls back to the session's user when absent — an API predating
+        // DEV-1633's profile support, or a profile build that failed and was
+        // logged server-side. Sign-in still completes; the hook payload is
+        // just the smaller object.
+        resolve({
+          token: session.auth_token,
+          user: response.profile || session.user
+        });
       };
 
       xhr.onerror = function() {
