@@ -536,7 +536,13 @@ Fliplet.Widget.instance('login', function(data) {
   function handleSameTabReturn() {
     var q = readAuthReturnParams();
 
-    if (!q.token && !q.authState) return false;
+    // `error` counts as a return. A failed exchange comes back here with
+    // error+state and no credential; bailing out treated that as "not a return
+    // leg", so consumeAuthState() never ran and the URL was never cleaned. The
+    // nonce then survived in BOTH sessionStorage and the URL after being
+    // spent — and since the legacy token+user contract is still accepted, a
+    // leaked one could be replayed against a forged legacy callback.
+    if (!q.token && !q.authState && !q.error) return false;
 
     // Always consume the stored state, even on rejection — burning the
     // nonce on first arrival prevents replay if an attacker manages to
@@ -558,6 +564,18 @@ Fliplet.Widget.instance('login', function(data) {
 
     if (!expectedState || !q.state || q.state !== expectedState) {
       return reject('state nonce missing or mismatch');
+    }
+
+    // Checked after the nonce, so the nonce is consumed and the URL cleaned on
+    // this path too. No toast: the message is already rendered inline at mount
+    // (.login-error-holder), so a toast would just say the same thing twice.
+    if (q.error) {
+      // eslint-disable-next-line no-console -- security trace: failed returns need to surface for incident triage
+      console.warn('[Fliplet.Login] same-tab return carried an error:', q.error);
+      cleanAuthReturnParamsFromUrl();
+      showStart();
+
+      return true;
     }
 
     // Preferred contract: one-shot state exchange — no credentials in the URL.

@@ -2,7 +2,6 @@
   "extends": "fliplet",
   "overrides": [
     {
-      "comment": "test/ runs under node --test, never in a browser, so it is not bound by the ES5 level the shipped widget assets target. js/ is unaffected by this override.",
       "files": ["test/**/*.js"],
       "parserOptions": {
         "ecmaVersion": 2022,
