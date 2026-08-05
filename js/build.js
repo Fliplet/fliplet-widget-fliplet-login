@@ -27,10 +27,16 @@ Fliplet.Widget.instance('login', function(data) {
     scheduleCheck();
   });
 
-  if (Fliplet.Navigate.query.error) {
+  // Read from location.search for the same reason handleSameTabReturn does —
+  // see readAuthReturnParams. A failed exchange returns here carrying ?error=,
+  // so this is part of the sign-in path and must not depend on which
+  // navigate.js the browser has cached.
+  var initialReturnError = readAuthReturnParams().error;
+
+  if (initialReturnError) {
     // .text(), never .html(): the error is a URL query param, so .html()
     // would be a reflected XSS sink on every app's login screen.
-    _this.$container.find('.login-error-holder').text(Fliplet.Navigate.query.error).addClass('show');
+    _this.$container.find('.login-error-holder').text(initialReturnError).addClass('show');
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -141,6 +147,39 @@ Fliplet.Widget.instance('login', function(data) {
    * Strips the auth-return params from the URL in place so the token
    * doesn't persist in the address bar / history / bookmarks.
    */
+  // Reads the sign-in return params straight off window.location.search rather
+  // than via Fliplet.Navigate.query.
+  //
+  // Navigate.query is produced by fliplet-core's navigate.js, which until the
+  // paired API fix stripped internal params with an unanchored lookahead: it
+  // fired on the literal "&auth" inside ANY param starting with "auth", so
+  // "?state=<nonce>&authState=<uuid>" became "?state=<nonce>State=<uuid>" —
+  // authState dropped and the nonce corrupted. That asset carries a
+  // version-pinned cache-buster which does not change when the file does, so a
+  // browser holding the old copy would fail sign-in outright rather than
+  // degrading to the legacy contract.
+  //
+  // location.search is the raw browser value and no parser touches it, so
+  // reading it here makes the widget independent of which navigate.js the
+  // client happens to have cached. The API-side fix still matters for every
+  // other consumer of Navigate.query; this just removes the hard dependency
+  // from the sign-in path.
+  function readAuthReturnParams() {
+    var params = { token: null, user: null, state: null, authState: null, authHost: null, error: null };
+
+    try {
+      var qs = new URLSearchParams(window.location.search);
+
+      Object.keys(params).forEach(function(key) {
+        params[key] = qs.get(key);
+      });
+    } catch (err) {
+      console.warn('[Fliplet.Login] failed to parse return params:', err);
+    }
+
+    return params;
+  }
+
   function cleanAuthReturnParamsFromUrl() {
     if (!window.history || !window.history.replaceState) return;
 
@@ -390,74 +429,98 @@ Fliplet.Widget.instance('login', function(data) {
     }
 
     // Retarget via options.apiUrl — NOT by building an absolute options.url.
-    // Fliplet.API.request prepends the API base to *every* url, absolute ones
-    // included (core.js `options.url = apiUrl + options.url`), so an absolute
-    // URL yields https://api.fliplet.com/https://us-api.fliplet.com/... → 404.
-    // options.apiUrl replaces the base instead, which is the supported retarget
-    // (added in DEV-667). Cores predating it ignore the option and fall back to
-    // the app's own host — same-region behaviour, not a broken request.
+    // Issued as a plain XHR rather than through Fliplet.API.request, because
+    // that helper cannot express this call safely on every core version:
     //
-    // apiUrl is set unconditionally. Leaving it off does NOT fall back to the
-    // canonical API host: Fliplet.API.request's default base is
-    // Fliplet.Env.get('apiUrl'), which inside a published web app is the
-    // apps-host-proxied URL (https://apps.fliplet.com/) rather than the API
-    // host — the same distinction getApiHost() exists to paper over. Pinning it
-    // to getApiOrigin() keeps the exchange on the host that serves these routes
-    // and matches where the login URL itself was sent.
+    //  - An absolute options.url is prepended to the API base anyway
+    //    (core.js `options.url = apiUrl + options.url`, no scheme guard),
+    //    yielding https://api.fliplet.com/https://us.api.fliplet.com/… → 404.
+    //    That is the bug that got the first attempt at this feature reverted.
+    //  - The supported retarget, options.apiUrl, only landed in DEV-667
+    //    (Sep 2025). Cores predating it silently ignore it and send the
+    //    request to the app's OWN region, where a cross-region state does not
+    //    exist — so those users get a 401 and cannot sign in. Published native
+    //    bundles pin their core version, so that is not a hypothetical.
+    //
+    // Talking to the validated origin directly removes the version dependency
+    // and the double-prefix hazard together. The URL is fully controlled here:
+    // the origin has already passed safeAuthHost, and the state is encoded.
     var appOrigin = getApiOrigin();
+    var base = (safeAuthHost(authHost, appOrigin) || appOrigin).replace(/\/+$/, '');
+    var url = base + '/v1/session?state=' + encodeURIComponent(authState);
 
-    var opts = {
-      url: 'v1/session?state=' + encodeURIComponent(authState),
-      apiUrl: safeAuthHost(authHost, appOrigin) || appOrigin,
-      // The state token must be the ONLY credential this call presents.
-      //
-      // core.js fills in Fliplet.User.getAuthToken() whenever Auth-token is
-      // unset, and the API's loadUser keeps that ambient token when the state
-      // fails to resolve (expired, already consumed, Redis blip) instead of
-      // rejecting. The exchange would then return 200 with the device's
-      // PREVIOUS session and sign the user in as the wrong identity, silently
-      // — the exact opposite of what a failed exchange should do.
-      //
-      // Sending a deliberately invalid sentinel suppresses the fill-in, so an
-      // unresolvable state has nothing to fall back to and correctly 401s.
-      headers: { 'Auth-token': 'state' }
-    };
+    return new Promise(function(resolve) {
+      var xhr = new XMLHttpRequest();
 
-    return Fliplet.API.request(opts).then(function(response) {
-      var session = response && response.session;
-      var user = session && session.user;
+      function fail(reason, status) {
+        // Log the status and the host actually targeted. Without them CORS,
+        // network failure, an expired state and a wrong-region redemption all
+        // collapse into the caller's single "exchange failed" warn — and the
+        // cross-region path is the one that cannot be falsified on a local
+        // stack, so a production failure needs to be diagnosable from the log
+        // line alone.
+        console.warn('[Fliplet.Login] authState exchange failed', {
+          reason: reason,
+          status: status || 'none',
+          apiUrl: base,
+          authHostAccepted: !!safeAuthHost(authHost, appOrigin)
+        });
 
-      if (!session || !session.auth_token || !user) {
-        return null;
+        resolve(null);
       }
 
-      // Pass the user through whole rather than hand-picking fields. It is
-      // already the server's own public projection (models/session.js
-      // getPublic() omits auth_token), and it is the same object the legacy
-      // token+user contract puts in the callback URL — so every path feeds
-      // Fliplet.Hooks.run('login') an identically shaped userProfile.
-      // Reducing it here silently dropped fields for deployed web/native
-      // sign-ins only, which is exactly the kind of divergence a public hook
-      // must not have.
-      return {
-        token: session.auth_token,
-        user: user
-      };
-    }).catch(function(err) {
-      // Log the status and the host that was actually targeted. Without them
-      // CORS, network failure, an expired state and a wrong-region redemption
-      // all collapse into the caller's single "exchange failed" warn — and the
-      // cross-region path is precisely the one that cannot be falsified on a
-      // local stack, so a production failure here needs to be diagnosable from
-      // the log line alone.
-      console.warn('[Fliplet.Login] authState exchange failed', {
-        status: (err && (err.status || (err.response && err.response.status))) || 'none',
-        apiUrl: opts.apiUrl,
-        authHostAccepted: !!safeAuthHost(authHost, appOrigin),
-        message: (err && err.message) || String(err)
-      });
+      try {
+        xhr.open('GET', url, true);
+      } catch (err) {
+        return fail('open threw: ' + ((err && err.message) || err));
+      }
 
-      return null;
+      // The state token must be the ONLY credential this call presents.
+      //
+      // Without a header the API's loadUser falls back to the auth_token
+      // cookie when the state fails to resolve (expired, already consumed,
+      // Redis blip) — and on a same-origin exchange the browser sends that
+      // cookie regardless of withCredentials. The response would then be 200
+      // with the device's PREVIOUS session, signing the user in as the wrong
+      // identity. A deliberately invalid sentinel occupies req.auth_token so
+      // the cookie fallback never fires and an unresolvable state 401s.
+      xhr.setRequestHeader('Auth-token', 'state');
+      xhr.timeout = 15000;
+
+      xhr.onload = function() {
+        var session;
+
+        try {
+          session = JSON.parse(xhr.responseText).session;
+        } catch (err) {
+          return fail('response was not JSON', xhr.status);
+        }
+
+        if (xhr.status !== 200 || !session || !session.auth_token || !session.user) {
+          return fail('unexpected response shape', xhr.status);
+        }
+
+        // Pass the user through whole rather than hand-picking fields — the
+        // earlier six-field copy dropped data for deployed web/native sign-ins
+        // only. Note this is the session's user (models/session.js getPublic(),
+        // which omits auth_token); it is NOT identical to the profile the
+        // legacy token+user contract carries, which the login route enriches
+        // with host/region/organization/isFirstLogin/mustVerifyEmail and setup
+        // status. Public `login` hook consumers therefore still see a smaller
+        // object on this path — normalising the two shapes needs its own
+        // decision, since narrowing the legacy one would break consumers.
+        resolve({ token: session.auth_token, user: session.user });
+      };
+
+      xhr.onerror = function() {
+        fail('network or CORS failure', xhr.status);
+      };
+
+      xhr.ontimeout = function() {
+        fail('timed out after 15000ms');
+      };
+
+      xhr.send();
     });
   }
 
@@ -471,9 +534,9 @@ Fliplet.Widget.instance('login', function(data) {
    * normal session-restore path.
    */
   function handleSameTabReturn() {
-    var q = Fliplet.Navigate.query;
+    var q = readAuthReturnParams();
 
-    if (!q || (!q.token && !q.authState)) return false;
+    if (!q.token && !q.authState) return false;
 
     // Always consume the stored state, even on rejection — burning the
     // nonce on first arrival prevents replay if an attacker manages to

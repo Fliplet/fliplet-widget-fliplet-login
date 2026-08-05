@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "devDependencies": {
     "babel-eslint": "^10.1.0",
