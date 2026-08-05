@@ -47,6 +47,12 @@
       // fliplet.com host (e.g. https://api.fliplet.test).
       if (u.origin === app.origin) return u.origin;
 
+      // Every rule below matches on u.hostname, which carries no port, while
+      // the function returns u.origin, which does. Without this an attacker
+      // who satisfies a hostname rule can still redirect the redemption to an
+      // arbitrary port on that host (https://api.fliplet.com:31337).
+      if (u.port !== '' && u.port !== app.port) return null;
+
       // Production and staging regional API hosts. The legitimate target set
       // is small and known — api.fliplet.com plus one label per region
       // (us.api, ca.api, staging.api, staging-us.api…) — so this matches those
@@ -60,7 +66,13 @@
       // "https://evil.com/?x=.fliplet.com" and "https://fliplet.com.evil.com"
       // both fail. The optional label must end in a dot, so "xapi.fliplet.com"
       // fails too.
-      if (u.protocol === 'https:' && /^([a-z0-9-]+\.)?api\.fliplet\.com$/i.test(u.hostname)) {
+      // The cdn[.-] exclusion is load-bearing, not defensive padding. The CDN
+      // origins in config/production.json are cdn.api.fliplet.com and
+      // cdn-staging.api.fliplet.com — a single label under api.fliplet.com,
+      // structurally identical to a region. Without the lookahead they satisfy
+      // this rule and receive the Authorization header. Their regional
+      // siblings (us.cdn / ca.cdn) carry two labels and are already excluded.
+      if (u.protocol === 'https:' && /^(?!cdn[.-])([a-z0-9-]+\.)?api\.fliplet\.com$/i.test(u.hostname)) {
         return u.origin;
       }
 
@@ -71,11 +83,21 @@
       // to the app's own (wrong-region) host, which masks cross-region bugs in
       // exactly the environments used to test for them.
       //
-      // The permitted suffix is derived from the app's OWN api host and
-      // requires a full label boundary, so a crafted authHost cannot widen it,
-      // and it never falls back to a registrable-domain guess (which would
-      // wrongly allow any *.co.uk for a custom domain on a public suffix).
+      // Deliberately scoped OFF production. On fliplet.com the rule above is
+      // the whole allowlist, and this one would undo its narrowness: the real
+      // CDN origins in config/production.json (cdn.api.fliplet.com,
+      // us.cdn.api.fliplet.com, ca.cdn.api.fliplet.com) are all subdomains of
+      // api.fliplet.com, so a bare suffix check hands them the Authorization
+      // header — the exact shape the rule above exists to prevent.
+      //
+      // Exactly ONE label, so it cannot walk down an arbitrary depth of
+      // subdomains, and the suffix is derived from the app's own host, so a
+      // crafted authHost cannot widen it. It never falls back to a
+      // registrable-domain guess (which would wrongly allow any *.co.uk for a
+      // custom domain on a public suffix).
       if (u.protocol === app.protocol
+        && !/(^|\.)fliplet\.com$/i.test(app.hostname)
+        && /^[a-z0-9-]+$/i.test(u.hostname.slice(0, Math.max(0, u.hostname.length - app.hostname.length - 1)))
         && u.hostname.length > app.hostname.length
         && u.hostname.slice(-(app.hostname.length + 1)) === '.' + app.hostname) {
         return u.origin;

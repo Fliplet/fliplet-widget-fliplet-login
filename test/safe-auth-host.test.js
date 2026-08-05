@@ -108,6 +108,69 @@ test('accepts regional siblings of a non-fliplet.com app host', () => {
   );
 });
 
+test('sibling rule never applies on production, so CDN origins stay out', () => {
+  // cdn.api.fliplet.com / us.cdn.api.fliplet.com / ca.cdn.api.fliplet.com are
+  // the real CDN hosts in config/production.json and are genuine subdomains of
+  // api.fliplet.com. A bare suffix check would hand them the Authorization
+  // header, undoing the narrowness of the regional-host rule above.
+  // Every api.fliplet.com host that appears in config/*.json, split by whether
+  // it is a redemption target. cdn.api.fliplet.com is a SINGLE label under
+  // api.fliplet.com — structurally identical to a region — so it passes the
+  // regional-host rule unless explicitly excluded.
+  const cdnHosts = [
+    'https://cdn.api.fliplet.com',
+    'https://cdn-staging.api.fliplet.com',
+    'https://us.cdn.api.fliplet.com',
+    'https://ca.cdn.api.fliplet.com'
+  ];
+
+  for (const host of cdnHosts) {
+    assert.strictEqual(safeAuthHost(host, PROD), null, host);
+    // Also when the app is itself on a regional host.
+    assert.strictEqual(safeAuthHost(host, 'https://us.api.fliplet.com'), null, host);
+  }
+
+  for (const host of ['https://anything.api.fliplet.com', 'https://a.b.c.api.fliplet.com']) {
+    // Arbitrary single labels are still accepted by the regional rule by
+    // design (new regions must work without a code change); arbitrary DEPTH
+    // is not.
+    assert.strictEqual(safeAuthHost('https://a.b.c.api.fliplet.com', PROD), null, host);
+  }
+
+  // The real API hosts must all survive the exclusion.
+  for (const host of ['https://staging.api.fliplet.com', 'https://staging-us.api.fliplet.com', 'https://development.api.fliplet.com']) {
+    assert.strictEqual(safeAuthHost(host, PROD), host, host);
+  }
+});
+
+test('sibling rule permits exactly one label off production', () => {
+  assert.strictEqual(
+    safeAuthHost('https://us.api.fliplet.test', LOCAL),
+    'https://us.api.fliplet.test'
+  );
+  // Deeper nesting must not walk down arbitrary subdomains.
+  assert.strictEqual(safeAuthHost('https://a.b.api.fliplet.test', LOCAL), null);
+  assert.strictEqual(safeAuthHost('https://cdn.us.api.fliplet.test', LOCAL), null);
+});
+
+test('rejects a non-matching port on every branch', () => {
+  // The rules match on hostname (port-free) but the function returns origin
+  // (port-bearing), so the port needs its own check.
+  assert.strictEqual(safeAuthHost('https://api.fliplet.com:31337', PROD), null);
+  assert.strictEqual(safeAuthHost('https://us.api.fliplet.com:8443', PROD), null);
+  assert.strictEqual(safeAuthHost('https://us.api.fliplet.test:9443', LOCAL), null);
+  // An explicit default port is normalised away by URL, so it still matches.
+  assert.strictEqual(safeAuthHost('https://us.api.fliplet.com:443', PROD), 'https://us.api.fliplet.com');
+});
+
+test('rejects trailing-dot FQDNs', () => {
+  // Resolves to the same host but is a distinct origin; easy to loosen by
+  // accident in a refactor.
+  assert.strictEqual(safeAuthHost('https://us.api.fliplet.com.', PROD), null);
+  assert.strictEqual(safeAuthHost('https://api.fliplet.com.', PROD), null);
+  assert.strictEqual(safeAuthHost('https://us.api.fliplet.test.', LOCAL), null);
+});
+
 test('sibling rule requires a full label boundary', () => {
   // "evilapi.fliplet.test" ends with "api.fliplet.test" as a raw substring but
   // is not a subdomain of it.

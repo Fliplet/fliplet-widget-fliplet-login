@@ -240,7 +240,16 @@ Fliplet.Widget.instance('login', function(data) {
   // Validates `authHost` before it is ever used as a request target.
   // Implementation and rationale live in js/safe-auth-host.js, which is loaded
   // ahead of this file by widget.json so it can also be unit tested in Node.
-  var safeAuthHost = window.FlipletLoginAuthHost.safeAuthHost;
+  //
+  // Resolved defensively: if the asset doesn't land, dereferencing it directly
+  // would throw at widget init and take the whole login screen down. Falling
+  // back to "reject everything" degrades to same-region sign-in, which is what
+  // an unvalidatable authHost should do anyway.
+  var safeAuthHost = (window.FlipletLoginAuthHost || {}).safeAuthHost || function() {
+    console.warn('[Fliplet.Login] safe-auth-host asset missing; authHost will be ignored');
+
+    return null;
+  };
 
   // Masks token / user / state / authState / authHost query params before
   // logging the URL, so credentials don't surface in remote log aggregators,
@@ -434,7 +443,20 @@ Fliplet.Widget.instance('login', function(data) {
         token: session.auth_token,
         user: user
       };
-    }).catch(function() {
+    }).catch(function(err) {
+      // Log the status and the host that was actually targeted. Without them
+      // CORS, network failure, an expired state and a wrong-region redemption
+      // all collapse into the caller's single "exchange failed" warn — and the
+      // cross-region path is precisely the one that cannot be falsified on a
+      // local stack, so a production failure here needs to be diagnosable from
+      // the log line alone.
+      console.warn('[Fliplet.Login] authState exchange failed', {
+        status: (err && (err.status || (err.response && err.response.status))) || 'none',
+        apiUrl: opts.apiUrl,
+        authHostAccepted: !!safeAuthHost(authHost, appOrigin),
+        message: (err && err.message) || String(err)
+      });
+
       return null;
     });
   }
@@ -685,6 +707,14 @@ Fliplet.Widget.instance('login', function(data) {
         if (result) {
           handleAuthSuccess(result);
         }
+      }).catch(function(err) {
+        // Same hazard the same-tab path guards against: a throw inside
+        // handleAuthSuccess would otherwise be an unhandled rejection with no
+        // toast and no showStart(), leaving the loader up indefinitely.
+        console.warn('[Fliplet.Login] native auth completion threw:', err);
+        Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+        hideLoadingState();
+        showStart();
       });
 
       return true;
