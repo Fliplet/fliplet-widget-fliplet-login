@@ -7,8 +7,11 @@
 name: Test
 
 on:
+  # pull_request covers every branch that matters while it is under review.
+  # Limiting push to the long-lived branches avoids running the same commit
+  # twice on every PR push, which `branches: ['**']` here did.
   push:
-    branches: ['**']
+    branches: [master, production]
   pull_request:
 
 jobs:
