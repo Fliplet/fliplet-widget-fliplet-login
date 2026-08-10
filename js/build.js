@@ -573,13 +573,28 @@ Fliplet.Widget.instance('login', function(data) {
   function handleSameTabReturn() {
     var q = readAuthReturnParams();
 
-    // `error` counts as a return. A failed exchange comes back here with
-    // error+state and no credential; bailing out treated that as "not a return
-    // leg", so consumeAuthState() never ran and the URL was never cleaned. The
-    // nonce then survived in BOTH sessionStorage and the URL after being
-    // spent — and since the legacy token+user contract is still accepted, a
-    // leaked one could be replayed against a forged legacy callback.
-    if (!q.token && !q.authState && !q.error) return false;
+    // `error` counts as a return, but only WITH `state`. A failed exchange
+    // comes back here with error+state and no credential; bailing out treated
+    // that as "not a return leg", so consumeAuthState() never ran and the URL
+    // was never cleaned. The nonce then survived in BOTH sessionStorage and
+    // the URL after being spent — and since the legacy token+user contract is
+    // still accepted, a leaked one could be replayed against a forged legacy
+    // callback.
+    //
+    // `error` alone is not enough: it's a generic param name, so a deep link
+    // or an app's own redirect carrying one would be treated as a return leg —
+    // burning the nonce (line below, before any validation) and then failing
+    // its own check, which toasts a sign-in failure and returns true, so
+    // init() skips initSession() and holds a signed-in user on the form. The
+    // burn also breaks a real sign-in in flight in another tab. The API always
+    // sends error together with state (failExchange returns to cbBase, which
+    // carries the nonce), so requiring both is exact.
+    //
+    // The IAB leg needs no equivalent: tryHandle already gates on the
+    // callback's exact origin AND pathname, so an unrelated URL never reaches
+    // its guard, and requiring state there would leave the IAB open forever if
+    // the auth page ever returned an error without one.
+    if (!q.token && !q.authState && !(q.error && q.state)) return false;
 
     // Always consume the stored state, even on rejection — burning the
     // nonce on first arrival prevents replay if an attacker manages to
