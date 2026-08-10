@@ -27,6 +27,19 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Installed only for lint. The test run above deliberately needs no
+      # dependencies (node --test is built in), so it stays green even if the
+      # registry is unreachable.
+      - name: Install dev dependencies
+        run: npm install --no-audit --no-fund
+
+      # A test-only workflow cannot catch a broken .eslintrc — and this repo
+      # has now shipped two (an invalid `comment` property, then an `es2022`
+      # env the pinned ESLint 8.2.0 rejects). Both stopped ESLint starting at
+      # all, repo-wide, and neither was visible to CI.
+      - name: Lint
+        run: npm run lint
+
       - name: Syntax-check the shipped widget assets
         # These load in a browser, never in Node, so they are not covered by
         # the test run above. --check is the cheapest guard against a parse

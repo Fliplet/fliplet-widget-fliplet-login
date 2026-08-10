@@ -31,7 +31,14 @@ Fliplet.Widget.instance('login', function(data) {
   // see readAuthReturnParams. A failed exchange returns here carrying ?error=,
   // so this is part of the sign-in path and must not depend on which
   // navigate.js the browser has cached.
-  var initialReturnError = readAuthReturnParams().error;
+  //
+  // Requires `state` alongside `error`, same as the handled-return guard: a
+  // real failed exchange always carries the nonce on cbBase, while `error` is
+  // a generic enough param name that a deep link or an app's own redirect can
+  // carry one. Without this, such a page load paints a sign-in failure into
+  // the login error area despite having nothing to do with signing in.
+  var initialReturnParams = readAuthReturnParams();
+  var initialReturnError = initialReturnParams.state ? initialReturnParams.error : null;
 
   if (initialReturnError) {
     // Show the localised string, NOT the server's — this runs at mount, before
