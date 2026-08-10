@@ -36,7 +36,16 @@ jobs:
       # A test-only workflow cannot catch a broken .eslintrc — and this repo
       # has now shipped two (an invalid `comment` property, then an `es2022`
       # env the pinned ESLint 8.2.0 rejects). Both stopped ESLint starting at
-      # all, repo-wide, and neither was visible to CI.
+      # all, repo-wide, and neither was visible to CI. An invalid config fails
+      # this step whatever it is pointed at, so that is caught either way.
+      #
+      # Scoped to the files this work introduced, NOT the whole repo. Lint has
+      # never run in CI here, so `npm run lint:all` currently reports 12 errors
+      # that predate this branch — 6 missing JSDoc @returns and an undeclared
+      # Uint8Array in js/build.js, 4 style errors in js/interface.js, 1 in
+      # js/app.js. Fixing those means editing files unrelated to the sign-in
+      # change, which does not belong in an auth PR; clearing them and widening
+      # this to lint:all is worth its own ticket.
       - name: Lint
         run: npm run lint
 

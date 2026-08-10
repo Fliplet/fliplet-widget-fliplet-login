@@ -85,6 +85,7 @@ test('rejects non-https schemes in production', () => {
   const hosts = [
     'http://api.fliplet.com',
     'ftp://api.fliplet.com',
+    // eslint-disable-next-line no-script-url -- the hostile input under test; asserting safeAuthHost rejects it is the whole point
     'javascript:alert(1)//api.fliplet.com',
     'data:text/html,<script>1</script>'
   ];
