@@ -1,3 +1,16 @@
 {
-  "extends": "fliplet"
+  "extends": "fliplet",
+  "overrides": [
+    {
+      "files": ["test/**/*.js"],
+      "parserOptions": {
+        "ecmaVersion": 2022,
+        "sourceType": "script"
+      },
+      "env": {
+        "node": true,
+        "es2021": true
+      }
+    }
+  ]
 }

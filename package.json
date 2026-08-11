@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "test": "node --test",
+    "lint": "eslint js/safe-auth-host.js test/",
+    "lint:all": "eslint js/ test/"
+  },
   "devDependencies": {
     "babel-eslint": "^10.1.0",
     "eslint": "^8.2.0",
