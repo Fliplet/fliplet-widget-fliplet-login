@@ -27,10 +27,31 @@ Fliplet.Widget.instance('login', function(data) {
     scheduleCheck();
   });
 
-  if (Fliplet.Navigate.query.error) {
-    // .text(), never .html(): the error is a URL query param, so .html()
-    // would be a reflected XSS sink on every app's login screen.
-    _this.$container.find('.login-error-holder').text(Fliplet.Navigate.query.error).addClass('show');
+  // Read from location.search for the same reason handleSameTabReturn does —
+  // see readAuthReturnParams. A failed exchange returns here carrying ?error=,
+  // so this is part of the sign-in path and must not depend on which
+  // navigate.js the browser has cached.
+  //
+  // Requires `state` alongside `error`, same as the handled-return guard: a
+  // real failed exchange always carries the nonce on cbBase, while `error` is
+  // a generic enough param name that a deep link or an app's own redirect can
+  // carry one. Without this, such a page load paints a sign-in failure into
+  // the login error area despite having nothing to do with signing in.
+  var initialReturnParams = readAuthReturnParams();
+  var initialReturnError = initialReturnParams.state ? initialReturnParams.error : null;
+
+  if (initialReturnError) {
+    // Show the localised string, NOT the server's — this runs at mount, before
+    // any nonce has been validated, and ?error= is reachable by anyone who can
+    // get the user to open a link. .text() means this was never an XSS sink,
+    // but rendering an attacker-chosen string into the app's own login error
+    // area is still a social-engineering primitive ("Your account is locked,
+    // call 0800-…"). handleSameTabReturn upgrades this to the real message
+    // once the nonce matches; the raw value is logged either way for triage.
+    // The IAB leg already takes this position — the two are now symmetric.
+    // eslint-disable-next-line no-console -- security trace: unauthenticated error params need to surface for incident triage
+    console.warn('[Fliplet.Login] return carried an error param:', initialReturnError);
+    showLoginError(genericLoginError());
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -47,6 +68,28 @@ Fliplet.Widget.instance('login', function(data) {
 
       scheduleCheck();
     }, 500);
+  }
+
+  // .text(), never .html(): these strings can originate from a URL query
+  // param, so .html() would be a reflected XSS sink on every app's login
+  // screen.
+  function showLoginError(message) {
+    _this.$container.find('.login-error-holder').text(message).addClass('show');
+  }
+
+  // T is a runtime global rather than a module import, and this can be called
+  // at mount before the translation layer is guaranteed ready — fall back to
+  // the literal rather than throwing on the sign-in path.
+  function genericLoginError() {
+    if (typeof T === 'function') {
+      try {
+        return T('widgets.login.fliplet.errors.unableLogin');
+      } catch (err) {
+        // fall through
+      }
+    }
+
+    return 'Sign-in could not be completed. Please try again.';
   }
 
   function showStart() {
@@ -102,7 +145,11 @@ Fliplet.Widget.instance('login', function(data) {
       callback = cbBase + stateSep + 'state=' + encodeURIComponent(state) + cbFrag;
     }
 
-    var params = ['return=callback', 'callback=' + encodeURIComponent(callback)];
+    // authExchange=1 asks the auth page for the state-exchange contract:
+    // the return leg carries a one-shot authState instead of the session
+    // token + user payload, keeping credentials out of URLs (and out of
+    // host access logs, proxy logs, and browser history).
+    var params = ['return=callback', 'callback=' + encodeURIComponent(callback), 'authExchange=1'];
     var appId = Fliplet.Env.get('appId');
 
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
@@ -123,6 +170,8 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
+      url.searchParams.delete('authState');
+      url.searchParams.delete('authHost');
       url.searchParams.delete('error');
 
       return url.toString();
@@ -135,6 +184,39 @@ Fliplet.Widget.instance('login', function(data) {
    * Strips the auth-return params from the URL in place so the token
    * doesn't persist in the address bar / history / bookmarks.
    */
+  // Reads the sign-in return params straight off window.location.search rather
+  // than via Fliplet.Navigate.query.
+  //
+  // Navigate.query is produced by fliplet-core's navigate.js, which until the
+  // paired API fix stripped internal params with an unanchored lookahead: it
+  // fired on the literal "&auth" inside ANY param starting with "auth", so
+  // "?state=<nonce>&authState=<uuid>" became "?state=<nonce>State=<uuid>" —
+  // authState dropped and the nonce corrupted. That asset carries a
+  // version-pinned cache-buster which does not change when the file does, so a
+  // browser holding the old copy would fail sign-in outright rather than
+  // degrading to the legacy contract.
+  //
+  // location.search is the raw browser value and no parser touches it, so
+  // reading it here makes the widget independent of which navigate.js the
+  // client happens to have cached. The API-side fix still matters for every
+  // other consumer of Navigate.query; this just removes the hard dependency
+  // from the sign-in path.
+  function readAuthReturnParams() {
+    var params = { token: null, user: null, state: null, authState: null, authHost: null, error: null };
+
+    try {
+      var qs = new URLSearchParams(window.location.search);
+
+      Object.keys(params).forEach(function(key) {
+        params[key] = qs.get(key);
+      });
+    } catch (err) {
+      console.warn('[Fliplet.Login] failed to parse return params:', err);
+    }
+
+    return params;
+  }
+
   function cleanAuthReturnParamsFromUrl() {
     if (!window.history || !window.history.replaceState) return;
 
@@ -144,6 +226,8 @@ Fliplet.Widget.instance('login', function(data) {
       url.searchParams.delete('token');
       url.searchParams.delete('user');
       url.searchParams.delete('state');
+      url.searchParams.delete('authState');
+      url.searchParams.delete('authHost');
       url.searchParams.delete('error');
       window.history.replaceState({}, document.title, url.toString());
     } catch (err) {
@@ -229,14 +313,30 @@ Fliplet.Widget.instance('login', function(data) {
       && /^token-[^@]*@fliplet\.com$/i.test(user.email);
   }
 
-  // Masks token / user / state query params before logging the URL,
-  // so the token doesn't surface in remote log aggregators, support-
-  // ticket screenshots, or screen recordings.
+  // Validates `authHost` before it is ever used as a request target.
+  // Implementation and rationale live in js/safe-auth-host.js, which is loaded
+  // ahead of this file by widget.json so it can also be unit tested in Node.
+  //
+  // Resolved defensively: if the asset doesn't land, dereferencing it directly
+  // would throw at widget init and take the whole login screen down. Falling
+  // back to "reject everything" degrades to same-region sign-in, which is what
+  // an unvalidatable authHost should do anyway.
+  var safeAuthHost = (window.FlipletLoginAuthHost || {}).safeAuthHost || function() {
+    console.warn('[Fliplet.Login] safe-auth-host asset missing; authHost will be ignored');
+
+    return null;
+  };
+
+  // Masks token / user / state / authState / authHost query params before
+  // logging the URL, so credentials don't surface in remote log aggregators,
+  // support-ticket screenshots, or screen recordings. authHost is not itself
+  // a credential, but it is masked alongside them so a log line can't be used
+  // to confirm which region a given user's session lives in.
   function maskUrlForLogging(url) {
     try {
       var u = new URL(url);
 
-      ['token', 'user', 'state'].forEach(function(key) {
+      ['token', 'user', 'state', 'authState', 'authHost'].forEach(function(key) {
         if (u.searchParams.has(key)) u.searchParams.set(key, '<redacted>');
       });
 
@@ -346,17 +446,162 @@ Fliplet.Widget.instance('login', function(data) {
   }
 
   /**
-   * Runs on widget mount. If the current URL has token + user query
-   * params, we're on the return leg of a same-tab sign-in — extract
-   * them, validate the state nonce and user shape, clean the URL, and
-   * feed the result into handleAuthSuccess. Returns true if the return
+   * Swaps a one-shot authState (minted by the auth page via
+   * POST /v1/session/authorize/state) for the signed-in session. The
+   * authenticate middleware resolves ?state= into the session's
+   * credentials server-side, so neither the session token nor the user
+   * payload ever transits a URL that reaches logs or history.
+   * @param {String} authState - One-shot state token from the return leg
+   * @param {String} [authHost] - Host that minted the token. The token is
+   *   single-use Redis and region-local, so it must be redeemed on its
+   *   issuing host — which for a cross-region user differs from this app's
+   *   API host. Absent only on rollout skew (old API); falls back to the
+   *   app's own API host, i.e. the pre-existing same-region behaviour.
+   * @returns {Promise<Object|null>} { token, user }, or null when the
+   *   state is invalid, expired, or the session can't be resolved
+   */
+  function exchangeAuthState(authState, authHost) {
+    if (!authState) {
+      return Promise.resolve(null);
+    }
+
+    // Retarget via options.apiUrl — NOT by building an absolute options.url.
+    // Issued as a plain XHR rather than through Fliplet.API.request, because
+    // that helper cannot express this call safely on every core version:
+    //
+    //  - An absolute options.url is prepended to the API base anyway
+    //    (core.js `options.url = apiUrl + options.url`, no scheme guard),
+    //    yielding https://api.fliplet.com/https://us.api.fliplet.com/… → 404.
+    //    That is the bug that got the first attempt at this feature reverted.
+    //  - The supported retarget, options.apiUrl, only landed in DEV-667
+    //    (Sep 2025). Cores predating it silently ignore it and send the
+    //    request to the app's OWN region, where a cross-region state does not
+    //    exist — so those users get a 401 and cannot sign in. Published native
+    //    bundles pin their core version, so that is not a hypothetical.
+    //
+    // Talking to the validated origin directly removes the version dependency
+    // and the double-prefix hazard together. The URL is fully controlled here:
+    // the origin has already passed safeAuthHost, and the state is encoded.
+    var appOrigin = getApiOrigin();
+    var base = (safeAuthHost(authHost, appOrigin) || appOrigin).replace(/\/+$/, '');
+    var url = base + '/v1/session?state=' + encodeURIComponent(authState);
+
+    return new Promise(function(resolve) {
+      var xhr = new XMLHttpRequest();
+
+      function fail(reason, status) {
+        // Log the status and the host actually targeted. Without them CORS,
+        // network failure, an expired state and a wrong-region redemption all
+        // collapse into the caller's single "exchange failed" warn — and the
+        // cross-region path is the one that cannot be falsified on a local
+        // stack, so a production failure needs to be diagnosable from the log
+        // line alone.
+        console.warn('[Fliplet.Login] authState exchange failed', {
+          reason: reason,
+          status: status || 'none',
+          apiUrl: base,
+          authHostAccepted: !!safeAuthHost(authHost, appOrigin)
+        });
+
+        resolve(null);
+      }
+
+      try {
+        xhr.open('GET', url, true);
+      } catch (err) {
+        return fail('open threw: ' + ((err && err.message) || err));
+      }
+
+      // The state token must be the ONLY credential this call presents.
+      //
+      // Without a header the API's loadUser falls back to the auth_token
+      // cookie when the state fails to resolve (expired, already consumed,
+      // Redis blip) — and on a same-origin exchange the browser sends that
+      // cookie regardless of withCredentials. The response would then be 200
+      // with the device's PREVIOUS session, signing the user in as the wrong
+      // identity. A deliberately invalid sentinel occupies req.auth_token so
+      // the cookie fallback never fires and an unresolvable state 401s.
+      xhr.setRequestHeader('Auth-token', 'state');
+      xhr.timeout = 15000;
+
+      xhr.onload = function() {
+        var session;
+
+        var response;
+
+        try {
+          response = JSON.parse(xhr.responseText);
+          session = response.session;
+        } catch (err) {
+          return fail('response was not JSON', xhr.status);
+        }
+
+        if (xhr.status !== 200 || !session || !session.auth_token || !session.user) {
+          return fail('unexpected response shape', xhr.status);
+        }
+
+        // Prefer the enriched profile the API builds for a state redemption
+        // (host, region, organization, policy, setup status, isFirstLogin,
+        // mustVerifyEmail), so Fliplet.Hooks.run('login') gets the same shape
+        // the legacy token+user contract carried. It is built server-side from
+        // the authenticated user, not echoed back from the mint.
+        //
+        // Falls back to the session's user when absent — an API predating
+        // DEV-1633's profile support, or a profile build that failed and was
+        // logged server-side. Sign-in still completes; the hook payload is
+        // just the smaller object.
+        resolve({
+          token: session.auth_token,
+          user: response.profile || session.user
+        });
+      };
+
+      xhr.onerror = function() {
+        fail('network or CORS failure', xhr.status);
+      };
+
+      xhr.ontimeout = function() {
+        fail('timed out after 15000ms');
+      };
+
+      xhr.send();
+    });
+  }
+
+  /**
+   * Runs on widget mount. If the current URL has authState (or legacy
+   * token + user) query params, we're on the return leg of a same-tab
+   * sign-in — validate the state nonce, resolve the auth result (via the
+   * one-shot exchange, or directly on the legacy contract), clean the
+   * URL, and feed it into handleAuthSuccess. Returns true if the return
    * was handled (success OR rejection) so the caller can skip the
    * normal session-restore path.
    */
   function handleSameTabReturn() {
-    var q = Fliplet.Navigate.query;
+    var q = readAuthReturnParams();
 
-    if (!q || !q.token) return false;
+    // `error` counts as a return, but only WITH `state`. A failed exchange
+    // comes back here with error+state and no credential; bailing out treated
+    // that as "not a return leg", so consumeAuthState() never ran and the URL
+    // was never cleaned. The nonce then survived in BOTH sessionStorage and
+    // the URL after being spent — and since the legacy token+user contract is
+    // still accepted, a leaked one could be replayed against a forged legacy
+    // callback.
+    //
+    // `error` alone is not enough: it's a generic param name, so a deep link
+    // or an app's own redirect carrying one would be treated as a return leg —
+    // burning the nonce (line below, before any validation) and then failing
+    // its own check, which toasts a sign-in failure and returns true, so
+    // init() skips initSession() and holds a signed-in user on the form. The
+    // burn also breaks a real sign-in in flight in another tab. The API always
+    // sends error together with state (failExchange returns to cbBase, which
+    // carries the nonce), so requiring both is exact.
+    //
+    // The IAB leg needs no equivalent: tryHandle already gates on the
+    // callback's exact origin AND pathname, so an unrelated URL never reaches
+    // its guard, and requiring state there would leave the IAB open forever if
+    // the auth page ever returned an error without one.
+    if (!q.token && !q.authState && !(q.error && q.state)) return false;
 
     // Always consume the stored state, even on rejection — burning the
     // nonce on first arrival prevents replay if an attacker manages to
@@ -380,6 +625,48 @@ Fliplet.Widget.instance('login', function(data) {
       return reject('state nonce missing or mismatch');
     }
 
+    // Checked after the nonce, so the nonce is consumed and the URL cleaned on
+    // this path too. No toast: the message is already rendered inline at mount
+    // (.login-error-holder), so a toast would just say the same thing twice.
+    if (q.error) {
+      // eslint-disable-next-line no-console -- security trace: failed returns need to surface for incident triage
+      console.warn('[Fliplet.Login] same-tab return carried an error:', q.error);
+      // The nonce matched, so this really is our own auth page's message and
+      // can replace the generic one rendered at mount.
+      showLoginError(q.error);
+      cleanAuthReturnParamsFromUrl();
+      showStart();
+
+      return true;
+    }
+
+    // Preferred contract: one-shot state exchange — no credentials in the URL.
+    if (q.authState) {
+      var authState = q.authState;
+      var authHost = q.authHost;
+
+      cleanAuthReturnParamsFromUrl();
+
+      exchangeAuthState(authState, authHost).then(function(result) {
+        if (!result || !isValidUserShape(result.user)) {
+          reject('authState exchange failed or returned an invalid user');
+
+          return;
+        }
+
+        handleAuthSuccess(result);
+      }).catch(function() {
+        // exchangeAuthState swallows its own request failure, so reaching here
+        // means handleAuthSuccess threw. Without this the rejection is
+        // unhandled: no toast, no showStart(), loader up indefinitely.
+        reject('exchange threw');
+      });
+
+      return true;
+    }
+
+    // Legacy contract (token + user in the URL) — kept for rollout skew
+    // between the widget and the auth page.
     var user = null;
 
     try {
@@ -411,7 +698,7 @@ Fliplet.Widget.instance('login', function(data) {
     var state = generateAuthState();
     var loginUrl = buildCallbackLoginUrl(callbackBase, state);
     var iabHandled = false;
-    var pendingAuthResult = null;
+    var pendingAuth = null;
     var fallbackTimer = null;
 
     // Pre-parse the expected callback URL once for strict origin +
@@ -471,8 +758,15 @@ Fliplet.Widget.instance('login', function(data) {
       if (parsed.origin !== expectedOrigin || parsed.pathname !== expectedPathname) return;
 
       var token = parsed.searchParams.get('token');
+      var authState = parsed.searchParams.get('authState');
+      var authHost = parsed.searchParams.get('authHost');
+      // A failed mint on the auth page returns to this same callback carrying
+      // only error+state. Without it in this guard the return is never marked
+      // handled: the IAB stays open on the callback page and the app sits
+      // behind it waiting for a result that never arrives.
+      var error = parsed.searchParams.get('error');
 
-      if (!token) return;
+      if (!token && !authState && !error) return;
 
       iabHandled = true;
 
@@ -499,37 +793,87 @@ Fliplet.Widget.instance('login', function(data) {
         return rejectIab('state nonce missing or mismatch');
       }
 
-      var user = null;
-
-      try {
-        user = JSON.parse(parsed.searchParams.get('user') || 'null');
-      } catch (err) {
-        return rejectIab('user payload failed to parse');
-      }
-
-      if (!isValidUserShape(user)) {
-        return rejectIab('user payload failed shape validation');
+      // Checked after the nonce so a crafted ?error= link can't drive this
+      // path without a matching nonce. The server's message is logged rather
+      // than shown: it arrives via the URL, and the localised toast already
+      // says the same thing without rendering text from the query string.
+      if (error) {
+        return rejectIab('auth page reported an error: ' + error);
       }
 
       // Don't run the success path yet: on iOS a WebView navigation issued
       // while the IAB dismissal transition is in flight gets swallowed by
       // the native view-controller transition, so Navigate.to at the end of
-      // handleAuthSuccess would silently do nothing. Stash the result and
-      // let onExit (which Cordova fires after close() completes on both
-      // platforms) kick it off once the IAB is fully gone.
-      pendingAuthResult = { token: token, user: user };
+      // handleAuthSuccess would silently do nothing. Resolve the auth result
+      // as a promise (the exchange is an XHR from the app WebView) and let
+      // onExit — which Cordova fires after close() completes on both
+      // platforms — consume it once the IAB is fully gone.
+      if (authState) {
+        // Preferred contract: one-shot state exchange — no credentials in
+        // the sentinel URL.
+        pendingAuth = exchangeAuthState(authState, authHost).then(function(result) {
+          if (!result || !isValidUserShape(result.user)) {
+            rejectIab('authState exchange failed or returned an invalid user');
+
+            return null;
+          }
+
+          return result;
+        });
+      } else {
+        // Legacy contract (token + user in the URL) — kept for rollout skew
+        // between the widget and the auth page.
+        var user = null;
+
+        try {
+          user = JSON.parse(parsed.searchParams.get('user') || 'null');
+        } catch (err) {
+          return rejectIab('user payload failed to parse');
+        }
+
+        if (!isValidUserShape(user)) {
+          return rejectIab('user payload failed shape validation');
+        }
+
+        pendingAuth = Promise.resolve({ token: token, user: user });
+      }
 
       // Safety net if a plugin quirk drops the exit event: run the success
       // path anyway rather than stranding a completed sign-in. onExit clears
       // this timer on the normal path.
-      fallbackTimer = setTimeout(function() {
-        if (pendingAuthResult) {
-          var authResult = pendingAuthResult;
+      fallbackTimer = setTimeout(runPendingAuth, 3000);
+    }
 
-          pendingAuthResult = null;
-          handleAuthSuccess(authResult);
+    /**
+     * Consumes the pending auth result exactly once (whichever of onExit or
+     * the fallback timer gets there first) and runs the success path.
+     * @returns {Boolean} TRUE if a pending result was consumed
+     */
+    function runPendingAuth() {
+      if (!pendingAuth) {
+        return false;
+      }
+
+      var auth = pendingAuth;
+
+      pendingAuth = null;
+
+      auth.then(function(result) {
+        // A null result means the exchange already surfaced its rejection.
+        if (result) {
+          handleAuthSuccess(result);
         }
-      }, 3000);
+      }).catch(function(err) {
+        // Same hazard the same-tab path guards against: a throw inside
+        // handleAuthSuccess would otherwise be an unhandled rejection with no
+        // toast and no showStart(), leaving the loader up indefinitely.
+        console.warn('[Fliplet.Login] native auth completion threw:', err);
+        Fliplet.UI.Toast.error(T('widgets.login.fliplet.errors.unableLogin'));
+        hideLoadingState();
+        showStart();
+      });
+
+      return true;
     }
 
     function onLoadStart(event) {
@@ -560,12 +904,7 @@ Fliplet.Widget.instance('login', function(data) {
 
       // Success path: the IAB is fully dismissed now, so the navigation at
       // the end of handleAuthSuccess can't be swallowed by the transition.
-      if (pendingAuthResult) {
-        var authResult = pendingAuthResult;
-
-        pendingAuthResult = null;
-        handleAuthSuccess(authResult);
-
+      if (runPendingAuth()) {
         return;
       }
 
