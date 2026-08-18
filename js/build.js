@@ -107,6 +107,17 @@ Fliplet.Widget.instance('login', function(data) {
 
     if (appId) params.push('appId=' + encodeURIComponent(String(appId)));
 
+    // On native the sign-in page opens inside Cordova's InAppBrowser, an
+    // embedded WebView. Google's "Use secure browsers" policy blocks OAuth
+    // from embedded WebViews (Error 403: disallowed_useragent), and Apple
+    // and Microsoft have or are adopting the same restriction, so hide all
+    // three social providers. Email/password and SAML2 SSO are unaffected.
+    // Re-enable once sign-in opens in a secure browser tab instead
+    // (SFSafariViewController / Chrome Custom Tabs).
+    if (Fliplet.Env.get('platform') !== 'web') {
+      params.push('hideProviders=google,apple,microsoft');
+    }
+
     return apiHost + 'v1/auth/login?' + params.join('&');
   }
 
