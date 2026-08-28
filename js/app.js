@@ -169,6 +169,7 @@
      * @param {Boolean} data.mustLinkTwoFactor - Whether the user needs to set up 2FA
      * @param {Boolean} data.mustUpdateAgreements - Whether the user needs to agree to the latest terms of use
      * @param {Boolean} data.policy.password.mustBeChanged - Whether the user needs to change their password
+     * @param {Boolean} [data.mustChangePassword] - The API's own verdict on the above, when it supplies one
      * @returns {Promise<Boolean>} If TRUE, the user must set up their account
      */
     function userMustSetupAccount(data) {
@@ -187,7 +188,18 @@
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
           && (!Fliplet.Utils.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
-        var passwordMustBeChanged = !userIsLinkedToSso && Fliplet.Utils.get(data, 'policy.password.mustBeChanged');
+        // PS-1475. Prefer the API's verdict: it is computed across ALL of the
+        // user's organizations and knows about `allowPasswordCredentials`.
+        // The local fallback below can only see `credentialTypes`, which
+        // describes whichever organization the API happened to treat as
+        // current, and reads any SSO link as "this user has no password" —
+        // so a user who signs in with SSO in one org and a password in
+        // another was never asked to clear a forced password change, which
+        // is exactly the group the org password policy flags.
+        var apiVerdict = Fliplet.Utils.get(data, 'mustChangePassword');
+        var passwordMustBeChanged = typeof apiVerdict === 'boolean'
+          ? apiVerdict
+          : !userIsLinkedToSso && Fliplet.Utils.get(data, 'policy.password.mustBeChanged');
 
         return mustLinkTwoFactor
           || data.mustUpdateProfile
