@@ -1,0 +1,59 @@
+# The widget's only automated check. safe-auth-host.js is the allowlist that
+# decides where the sign-in exchange sends its credential, and the absence of
+# that control is what caused the DEV-1572 revert — so its tests should not
+# depend on someone remembering to run npm test.
+#
+# node --test is built in: no dependency install, nothing to keep in sync.
+name: Test
+
+on:
+  # pull_request covers every branch that matters while it is under review.
+  # Limiting push to the long-lived branches avoids running the same commit
+  # twice on every PR push, which `branches: ['**']` here did.
+  push:
+    branches: [master, production]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run tests
+        run: npm test
+
+      # Installed only for lint. The test run above deliberately needs no
+      # dependencies (node --test is built in), so it stays green even if the
+      # registry is unreachable.
+      - name: Install dev dependencies
+        run: npm install --no-audit --no-fund
+
+      # A test-only workflow cannot catch a broken .eslintrc — and this repo
+      # has now shipped two (an invalid `comment` property, then an `es2022`
+      # env the pinned ESLint 8.2.0 rejects). Both stopped ESLint starting at
+      # all, repo-wide, and neither was visible to CI. An invalid config fails
+      # this step whatever it is pointed at, so that is caught either way.
+      #
+      # Scoped to the files this work introduced, NOT the whole repo. Lint has
+      # never run in CI here, so `npm run lint:all` currently reports 12 errors
+      # that predate this branch — 6 missing JSDoc @returns and an undeclared
+      # Uint8Array in js/build.js, 4 style errors in js/interface.js, 1 in
+      # js/app.js. Fixing those means editing files unrelated to the sign-in
+      # change, which does not belong in an auth PR; clearing them and widening
+      # this to lint:all is worth its own ticket.
+      - name: Lint
+        run: npm run lint
+
+      - name: Syntax-check the shipped widget assets
+        # These load in a browser, never in Node, so they are not covered by
+        # the test run above. --check is the cheapest guard against a parse
+        # error reaching a published app.
+        run: |
+          for f in js/*.js; do
+            node --check "$f"
+          done
