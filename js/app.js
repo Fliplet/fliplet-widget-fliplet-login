@@ -188,14 +188,7 @@
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
           && (!Fliplet.Utils.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
-        // PS-1475. Prefer the API's verdict: it is computed across ALL of the
-        // user's organizations and knows about `allowPasswordCredentials`.
-        // The local fallback below can only see `credentialTypes`, which
-        // describes whichever organization the API happened to treat as
-        // current, and reads any SSO link as "this user has no password" —
-        // so a user who signs in with SSO in one org and a password in
-        // another was never asked to clear a forced password change, which
-        // is exactly the group the org password policy flags.
+        // PS-1475: the API computes this across all orgs; fall back to the local derivation on older APIs
         var apiVerdict = Fliplet.Utils.get(data, 'mustChangePassword');
         var passwordMustBeChanged = typeof apiVerdict === 'boolean'
           ? apiVerdict
