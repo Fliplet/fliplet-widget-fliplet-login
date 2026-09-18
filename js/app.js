@@ -169,6 +169,7 @@
      * @param {Boolean} data.mustLinkTwoFactor - Whether the user needs to set up 2FA
      * @param {Boolean} data.mustUpdateAgreements - Whether the user needs to agree to the latest terms of use
      * @param {Boolean} data.policy.password.mustBeChanged - Whether the user needs to change their password
+     * @param {Boolean} [data.mustChangePassword] - The API's own verdict on the above, when it supplies one
      * @returns {Promise<Boolean>} If TRUE, the user must set up their account
      */
     function userMustSetupAccount(data) {
@@ -187,7 +188,11 @@
         var agreements = data.mustReviewAgreements || [];
         var hasAgreementsToReview = agreements.length
           && (!_.isEqual(agreements, ['tos']) || isOrganizationAdmin(data));
-        var passwordMustBeChanged = !userIsLinkedToSso && _.get(data, 'policy.password.mustBeChanged');
+        // PS-1475: the API computes this across all orgs; fall back to the local derivation on older APIs
+        var apiVerdict = _.get(data, 'mustChangePassword');
+        var passwordMustBeChanged = typeof apiVerdict === 'boolean'
+          ? apiVerdict
+          : !userIsLinkedToSso && _.get(data, 'policy.password.mustBeChanged');
 
         return mustLinkTwoFactor
           || data.mustUpdateProfile
