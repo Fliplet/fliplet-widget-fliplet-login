@@ -194,8 +194,8 @@
           ? apiVerdict
           : !userIsLinkedToSso && _.get(data, 'policy.password.mustBeChanged');
 
+        // PS-2415: name is optional in Studio (DEV-1090), so it's not a setup step
         return mustLinkTwoFactor
-          || data.mustUpdateProfile
           || hasAgreementsToReview
           || passwordMustBeChanged;
       });
