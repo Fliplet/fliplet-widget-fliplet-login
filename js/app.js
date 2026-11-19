@@ -202,6 +202,71 @@
     }
 
     /**
+     * Whether the in-app browser has reached the page account setup ends on
+     * @param {String} url - URL loaded in the in-app browser
+     * @returns {Boolean} TRUE if the URL is the API's interactive logout page
+     */
+    function isAccountSetupCompleteUrl(url) {
+      try {
+        return /\/v1\/auth\/interactive-logout\/?$/.test(new URL(url).pathname);
+      } catch (err) {
+        return false;
+      }
+    }
+
+    /**
+     * Opens the account setup page in an in-app browser
+     * @param {String} url - Account setup URL
+     * @param {Boolean} defaultShare - Share setting to restore once the browser is open
+     * @returns {Promise} Promise is resolved when the browser is closed and the account is validated again
+     */
+    function openAccountSetup(url, defaultShare) {
+      var browser;
+      var setupComplete = false;
+
+      function closeBrowser() {
+        if (!browser || typeof browser.close !== 'function') {
+          return;
+        }
+
+        try {
+          browser.close();
+        } catch (err) {
+          console.warn('[Fliplet.Login] Failed to close account setup browser', err);
+        }
+      }
+
+      return new Promise(function(resolve, reject) {
+        Fliplet.Navigate.url({
+          url: url,
+          inAppBrowser: true,
+          // PS-2415: the setup-complete page relies on window.close(), which the
+          // Android in-app browser ignores, so the user had to press Back through
+          // Studio's setup pages. Close the browser from here once that page has
+          // loaded, by which point it has cleared the browser's session.
+          onLoadStop: function(event) {
+            if (!event || !isAccountSetupCompleteUrl(event.url)) {
+              return;
+            }
+
+            setupComplete = true;
+            closeBrowser();
+          },
+          onclose: function() {
+            validateAccount().then(resolve).catch(reject);
+          }
+        }).then(function(result) {
+          browser = result;
+          Fliplet.Navigate.defaults.disableShare = defaultShare;
+
+          if (setupComplete) {
+            closeBrowser();
+          }
+        });
+      });
+    }
+
+    /**
      * Takes the user to set up their account in an in-app browser
      * @returns {Promise} Promise is resolved if or when the account is correctly set up
      */
@@ -210,6 +275,7 @@
         storage = storage || {};
 
         var defaultShare = Fliplet.Navigate.defaults.disableShare;
+        var apiUrl = Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl');
 
         Fliplet.Navigate.defaults.disableShare = true;
 
@@ -222,31 +288,12 @@
             'Auth-token': storage.auth_token
           }
         }).then(function(response) {
-          return new Promise(function(resolve, reject) {
-            Fliplet.Navigate.url({
-              url: (Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/redirect?state=' + response.state + '&utm_source=com.fliplet.login',
-              inAppBrowser: true,
-              onclose: function() {
-                validateAccount().then(resolve).catch(reject);
-              }
-            }).then(function() {
-              Fliplet.Navigate.defaults.disableShare = defaultShare;
-            });
-          });
+          return openAccountSetup(apiUrl + 'v1/auth/redirect?state=' + response.state + '&utm_source=com.fliplet.login', defaultShare);
         }).catch(function(err) {
           console.error('[Fliplet.Login] Failed to obtain state token', err);
           Fliplet.Navigate.defaults.disableShare = defaultShare;
-          return new Promise(function(resolve, reject) {
-            Fliplet.Navigate.url({
-              url: (Fliplet.Env.get('primaryApiUrl') || Fliplet.Env.get('apiUrl')) + 'v1/auth/redirect?auth_token=' + storage.auth_token + '&utm_source=com.fliplet.login',
-              inAppBrowser: true,
-              onclose: function() {
-                validateAccount().then(resolve).catch(reject);
-              }
-            }).then(function() {
-              Fliplet.Navigate.defaults.disableShare = defaultShare;
-            });
-          });
+
+          return openAccountSetup(apiUrl + 'v1/auth/redirect?auth_token=' + storage.auth_token + '&utm_source=com.fliplet.login', defaultShare);
         });
       });
     }
